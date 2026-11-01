@@ -1,5 +1,5 @@
-// BC1-BC5 (S3TC / RGTC) decoder, for GPUs without textureCompressionBC: Android's Adreno and Mali drivers (see
-// docs/research/android.md). MHGU_NO_BC=1 makes a desktop GPU act the same, to test it.
+// BC1-BC5 (S3TC / RGTC) decoder for GPUs without textureCompressionBC.
+// MHGU_NO_BC=1 forces this path for testing.
 #pragma once
 #include <stdint.h>
 
