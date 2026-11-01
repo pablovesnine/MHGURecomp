@@ -215,7 +215,8 @@ class SyncTests(unittest.TestCase):
         self.commit("tools/fork-policy.json", json.dumps(policy))
         self.git(self.writer, "push", "origin", "master")
         self.git(self.writer, "reset", "--hard", "HEAD~1")
-        retired = ("update-build-arm64.sh", "tests/test_update_build.py")
+        retired = ("update-build-arm64.sh", "tests/test_update_build.py",
+                   "run-debug.bat", "run-game.bat")
         for path in retired:
             self.commit(path, "upstream attempts to add a retired personal entry\n")
         self.git(self.writer, "push", "upstream", "master")
@@ -240,6 +241,14 @@ class SyncTests(unittest.TestCase):
 
     def test_unknown_new_path_blocks(self):
         self.commit("new-unclassified/code.c", "review first")
+        self.git(self.writer, "push", "upstream", "master")
+        self.worker.refresh()
+        with self.assertRaisesRegex(sync.Intervention, "Unclassified"):
+            self.worker.prepare()
+        self.assertFalse((self.repo / ".git/MERGE_HEAD").exists())
+
+    def test_unknown_new_bat_still_requires_policy_review(self):
+        self.commit("new-launcher.bat", "unreviewed platform entry point\n")
         self.git(self.writer, "push", "upstream", "master")
         self.worker.refresh()
         with self.assertRaisesRegex(sync.Intervention, "Unclassified"):

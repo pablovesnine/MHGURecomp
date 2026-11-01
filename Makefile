@@ -131,9 +131,9 @@ GAMELIB_ID := $(shell (cat $(GAMELIB_SRCS); echo '$(GENFLAGS)') | sha256sum | cu
 # valid across builds until the translator changes. (Line endings ignored: the same sources hash the same everywhere.)
 SHADER_SRCS := runtime/nvn/maxwell/translate.c runtime/nvn/maxwell/shader.h
 SHADER_ID := $(shell cat $(SHADER_SRCS) | tr -d '\r' | sha256sum | cut -c1-16)
-# VERSION: this build's release (git describe: 0.10.3 on a release's tag, 0.10.3-4-gabc1234 after it), in the log and
-# the post-make Docker build metadata. Use tools/build-linux-release.sh for a
-# release built before its tag is made.
+# The supported release wrapper supplies the verified numeric upstream VERSION
+# for the runtime log and post-make metadata. The fallback is for direct local
+# development only; it does not establish release provenance.
 VERSION ?= $(shell git describe --tags 2>/dev/null || echo unknown)
 
 RT_OBJ   = $(patsubst runtime/%.c,$(O)/rt/%.o,$(RT_SRC)) $(RT_CXX) $(O)/rt/overlay.o $(O)/rt/settings_panel.o $(IMGUI_OBJ) \

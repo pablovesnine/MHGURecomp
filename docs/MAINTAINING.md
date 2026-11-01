@@ -73,7 +73,7 @@ Dependency update PRs remain reviewable; they are not upstream sync.
 ## Local build and privacy
 
 Follow the public commands in the [README](../README.md#build), using
-`tools/build-linux-release.sh` and your own dump path and build label.
+`tools/build-linux-release.sh` and your own dump path.
 Update a clean master checkout with `git pull --ff-only origin master`;
 do not reset local changes or clean ignored caches to update.
 Personal convenience scripts belong outside the checkout, not in Git.
@@ -81,13 +81,18 @@ The public wrapper exports tracked HEAD, not unrelated working files.
 Dump mounts are read-only; SELinux labels are adjusted on the dedicated
 dump/work/output directories. Never point the dump option at your home root.
 
-Build labels are numeric timestamps, not a choice of upstream release.
-`--version` overrides the label only. Build metadata records the exact SHA,
-tools image and program hashes. Verify checksums only after a successful
-build; old archives may still exist after a failed attempt.
+Release builds use the highest numeric upstream tag incorporated into HEAD.
+`bash tools/upstream-version.sh` reports that version, using the fixed upstream
+remote and a separate ref namespace, not local or fork tags. Verification needs
+network access and full Git history; missing, moved or unverifiable tags stop
+the build. An explicit `--version` must equal the resolved upstream version.
+Between releases the number stays unchanged; metadata records the exact SHA,
+tools image and program hashes. Verify checksums only after a successful build;
+old archives with the same version may still exist after a failed attempt.
 
 `.linux-release/`, logs and `dist/` are local outputs, not tracked sources.
 Never attach dumps, generated sources or private build folders to Issues.
-Maintainer release uploads are manual; CI publishes only the tools image.
+Maintainer release uploads are manual; automation creates no fork tags or
+GitHub Releases. CI publishes only the tools image.
 The fork's license does not authorize redistribution of game-derived code.
 Licenses and required third-party sources must remain intact.

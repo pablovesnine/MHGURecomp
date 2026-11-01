@@ -71,6 +71,7 @@ class InterfaceTests(unittest.TestCase):
         self.repo.mkdir()
         (self.repo / "tools/docker").mkdir(parents=True)
         shutil.copy(ROOT / "tools/build-linux-release.sh", self.repo / "tools")
+        shutil.copy(ROOT / "tools/upstream-version.sh", self.repo / "tools")
         (self.repo / "tools/docker/Dockerfile").write_text("tracked tools fixture\n")
         (self.repo / ".gitignore").write_text(
             ".linux-release/\ndist/\n")
@@ -79,6 +80,12 @@ class InterfaceTests(unittest.TestCase):
         self.git("-c", "user.name=Test Fixture",
                  "-c", "user.email=fixture@example.invalid",
                  "commit", "-qm", "Explicit test fixture")
+        self.upstream = self.root / "trusted upstream.git"
+        subprocess.run(["git", "clone", "--bare", str(self.repo), str(self.upstream)],
+                       check=True, capture_output=True)
+        self.git("--git-dir=" + str(self.upstream), "tag", "0.12.0")
+        self.git("config", f"url.{self.upstream}.insteadOf",
+                 "https://github.com/morerokk/MHGURecomp.git")
         self.game = self.root / "private dump fixture"
         (self.game / "exefs").mkdir(parents=True)
         (self.game / "romfs").mkdir()
@@ -138,6 +145,9 @@ class InterfaceTests(unittest.TestCase):
         self.assertFalse((exported[0] / "untracked-private.txt").exists())
 
     def test_check_has_no_game_or_output_mount(self):
+        # Check mode must work offline and with shallow CI history.
+        shutil.rmtree(self.upstream)
+        (self.repo / ".git/shallow").write_text(self.git("rev-parse", "HEAD").stdout)
         result = self.run_script("--check", "--version", "0", "--jobs", "3",
                                  "--image", "mhgurecomp-builder:ci", "--skip-image-build")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -184,8 +194,30 @@ class InterfaceTests(unittest.TestCase):
     def test_cache_separates_version_and_jobs(self):
         self.assertEqual(self.release().returncode, 0)
         self.assertEqual(self.release("--jobs", "3").returncode, 0)
-        self.assertEqual(self.release("--version", "1").returncode, 0)
+        self.git("--git-dir=" + str(self.upstream), "tag", "0.13.1")
+        self.assertEqual(self.release("--version", "0.13.1").returncode, 0)
         self.assertEqual(len(list((self.repo / ".linux-release").glob("*/src"))), 3)
+
+    def test_release_resolves_version_without_override(self):
+        result = self.run_script("--game", str(self.game))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.run_command()[-5:-3], ["release", "0.12.0"])
+        self.assertIn("LinuxARM64-MHGURecomp.0.12.0.tar.gz", result.stdout)
+
+    def test_overrides_must_match_upstream_before_engine(self):
+        for version in ("1", "20261101235959", "0.12.0-test"):
+            with self.subTest(version=version):
+                result = self.release("--version", version)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("version", result.stderr)
+                self.assertFalse(self.log.exists())
+
+    def test_upstream_errors_fail_before_engine(self):
+        shutil.rmtree(self.upstream)
+        result = self.release()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cannot query upstream", result.stderr)
+        self.assertFalse(self.log.exists())
 
     def test_existing_build_lock_is_required(self):
         import fcntl
@@ -237,11 +269,23 @@ class InterfaceTests(unittest.TestCase):
         self.assertFalse(self.log.exists())
 
     def test_dirty_tracked_sources_fail_before_engine(self):
+        shutil.rmtree(self.upstream)
         with (self.repo / "tools/build-linux-release.sh").open("a") as stream:
             stream.write("\n# Explicit dirty-file fixture.\n")
         result = self.release()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("tracked changes", result.stderr)
+        self.assertNotIn("cannot query upstream", result.stderr)
+        self.assertFalse(self.log.exists())
+
+    def test_untracked_resolver_is_not_executed(self):
+        self.git("rm", "--cached", "tools/upstream-version.sh")
+        self.git("-c", "user.name=Test Fixture",
+                 "-c", "user.email=fixture@example.invalid",
+                 "commit", "-qm", "Explicit missing tracked helper fixture")
+        result = self.release()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("commit the build tools", result.stderr)
         self.assertFalse(self.log.exists())
 
     def test_engine_failure_propagates(self):

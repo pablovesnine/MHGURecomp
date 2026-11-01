@@ -5,11 +5,12 @@ umask 077
 die() { echo "linux-release: $*" >&2; exit 1; }
 usage() {
   cat <<'HELP'
-Usage: bash tools/build-linux-release.sh --game DIR --version VERSION [--jobs N]
+Usage: bash tools/build-linux-release.sh --game DIR [--version VERSION] [--jobs N]
        bash tools/build-linux-release.sh --check --version 0 [--jobs N]
 
 Build Linux ARM64 only, on a Linux x86_64 host with local Docker.
 --check validates the public ARM64 runtime without game files.
+Release versions resolve from integrated upstream tags; --version must match.
 By default use ghcr.io/pablovesnine/mhgurecomp-builder:<full HEAD>, or build
 the tools locally from that exact tracked commit if the image is unavailable.
 --image NAME overrides the image name; --skip-image-build requires it to exist.
@@ -44,7 +45,8 @@ while (($#)); do
     *) die "unknown option: $1" ;;
   esac
 done
-[[ $version =~ ^[0-9]+(\.[0-9]+)*$ ]] || die "use a numeric release version"
+[[ -z $version || $version =~ ^[0-9]+(\.[0-9]+)*$ ]] || die "use a numeric release version"
+[[ $mode != check || -n $version ]] || die "use a numeric release version"
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || die "jobs must be a positive integer"
 [[ $skip_build != true || $rebuild != true ]] \
   || die "--skip-image-build and --rebuild-image are incompatible"
@@ -68,6 +70,14 @@ git diff --quiet HEAD -- || die "commit or restore tracked changes first"
 git cat-file -e HEAD:tools/build-linux-release.sh \
   || die "commit the build tools before using this command"
 [[ $root != *:* && $root != *$'\n'* ]] || die "checkout path contains unsupported characters"
+if [[ $mode == release ]]; then
+  git cat-file -e HEAD:tools/upstream-version.sh \
+    || die "commit the build tools before using this command"
+  resolved=$(bash "$root/tools/upstream-version.sh") || die "cannot resolve upstream version"
+  [[ -z $version || $version == "$resolved" ]] \
+    || die "version override must match upstream version $resolved"
+  version=$resolved
+fi
 revision=$(git rev-parse HEAD)
 [[ $revision =~ ^[0-9a-f]{40}$ ]] || die "expected a full SHA-1 source revision"
 default_image=false

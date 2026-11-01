@@ -49,6 +49,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("update-build-arm64.sh", self.builder)
 
     def test_mandatory_lint_runtime_qemu(self):
+        self.assertIn("shellcheck tools/build-linux-release.sh tools/upstream-version.sh",
+                      self.builder)
         for text in ("runs-on: ubuntu-24.04", "timeout-minutes: 60",
                      "--check --version 0 --jobs 2", "shellcheck tools/build-linux-release.sh",
                      "actionlint", "unittest discover", "platforms: linux/amd64",
@@ -117,12 +119,14 @@ class WorkflowTests(unittest.TestCase):
         policy = sync.validate_policy(json.loads((ROOT / "tools/fork-policy.json").read_text()))
         for path in ("README.md", ".github/workflows/brand-new.yml", "docs/new.md",
                      "tools/sync-upstream.py", "tools/fork-policy.json",
-                     "tools/docker/new.sh", "updater/updater.h"):
+                     "tools/docker/new.sh", "updater/updater.h",
+                     "tools/upstream-version.sh", "tests/test_upstream_version.py"):
             self.assertEqual(sync.classify(policy, path), "keep", path)
         for path in ("android/new.c", "server/new.c", "extras/cheats/new.txt",
                      "runtime/platform/android.c", "runtime/platform/windows.c",
                      "tools/bundle_dlls.py", "updater/new.c", "tests/test_update_arch.c",
-                     "update-build-arm64.sh", "tests/test_update_build.py"):
+                     "update-build-arm64.sh", "tests/test_update_build.py",
+                     "run-debug.bat", "run-game.bat"):
             self.assertEqual(sync.classify(policy, path), "remove", path)
         for path in ("updater/sha256.c", "runtime/new.c", "third_party/new.c"):
             self.assertEqual(sync.classify(policy, path), "shared", path)

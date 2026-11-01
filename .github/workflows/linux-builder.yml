@@ -82,8 +82,8 @@ jobs:
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
       - name: Lint shell, workflows and Python regressions
         run: |
-          bash -n tools/build-linux-release.sh tools/docker/*.sh
-          shellcheck tools/build-linux-release.sh tools/docker/*.sh
+          bash -n tools/build-linux-release.sh tools/upstream-version.sh tools/docker/*.sh
+          shellcheck tools/build-linux-release.sh tools/upstream-version.sh tools/docker/*.sh
           curl --fail --location --silent --show-error --retry 3 \
             https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
             -o "$RUNNER_TEMP/actionlint.tar.gz"

@@ -5,9 +5,11 @@
       "README.md", "Makefile", ".gitignore",
       "tools/.dockerignore", "tools/desktop-arch.mk", "tools/dist.py",
       "tools/build-linux-release.sh", "tools/sync-upstream.py", "tools/fork-policy.json",
+      "tools/upstream-version.sh",
       "updater/updater.h",
       "tests/test_build_arch.py", "tests/test_linux_release.py", "tests/test_fork_docs.py",
-      "tests/test_upstream_sync.py", "tests/test_automation_workflows.py"
+      "tests/test_upstream_sync.py", "tests/test_automation_workflows.py",
+      "tests/test_upstream_version.py"
     ],
     "prefixes": [".github/", "docs/", "tools/docker/"]
   },
@@ -15,7 +17,8 @@
     "files": [
       "runtime/platform/android.c", "runtime/platform/windows.c",
       "tools/bundle_dlls.py", "tests/test_update_arch.c",
-      "update-build-arm64.sh", "tests/test_update_build.py"
+      "update-build-arm64.sh", "tests/test_update_build.py",
+      "run-debug.bat", "run-game.bat"
     ],
     "prefixes": ["android/", "server/", "extras/cheats/", "updater/"]
   },

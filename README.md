@@ -35,8 +35,7 @@ working Docker/Moby installation. Run these commands as your normal user.
 
    ```bash
    GAME_DIR="/absolute/path/to/MHGU dump/"
-   BUILD_VERSION="$(date -u +%Y%m%d.%H%M%S)"
-   bash tools/build-linux-release.sh --game "$GAME_DIR" --version "$BUILD_VERSION" --jobs 2
+   bash tools/build-linux-release.sh --game "$GAME_DIR" --jobs 2
    ```
 
    The dump must contain `exefs/main`, `exefs/sdk` and the complete `romfs/`.
@@ -50,8 +49,11 @@ working Docker/Moby installation. Run these commands as your normal user.
    (cd dist && sha256sum --check SHA256SUMS)
    ```
 
-Output: `dist/LinuxARM64-MHGURecomp.<build>.tar.gz` and `dist/SHA256SUMS`.
-The numeric UTC label identifies your build; its source SHA is recorded
+Output: `dist/LinuxARM64-MHGURecomp.<version>.tar.gz` and `dist/SHA256SUMS`.
+The version is the highest numeric upstream tag incorporated into your
+checkout, without a fork suffix. Inspect it with `bash tools/upstream-version.sh`.
+Release builds need network access to verify upstream tags and full Git history.
+Between releases the version stays unchanged; the exact source SHA is recorded
 inside the archive. No dump or package is uploaded automatically.
 
 For later builds, update a clean `master` checkout and repeat steps 3–4:
