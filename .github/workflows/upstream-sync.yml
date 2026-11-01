@@ -1,4 +1,4 @@
-name: Sync upstream for human review
+name: Synchronize upstream after read-only ARM64 validation
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       retry_validation:
-        description: Retest the unchanged candidate (otherwise tested SHAs are skipped)
+        description: Retry an unchanged blocker or failed candidate explicitly
         type: boolean
         default: false
       cleanup_legacy:
@@ -30,22 +30,26 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
-      pull-requests: write
-      issues: write
+      issues: read
+      statuses: read
     outputs:
       candidate_sha: ${{ steps.prepare.outputs.candidate_sha }}
-      pr_number: ${{ steps.prepare.outputs.pr_number }}
       should_validate: ${{ steps.prepare.outputs.should_validate }}
+      outcome: ${{ steps.prepare.outputs.outcome }}
+      base: ${{ steps.prepare.outputs.base }}
+      upstream: ${{ steps.prepare.outputs.upstream }}
+      policy: ${{ steps.prepare.outputs.policy }}
+      key: ${{ steps.prepare.outputs.key }}
+      message: ${{ steps.prepare.outputs.message }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-          # Only the Git-only preparer may push; never execute candidate files.
           persist-credentials: true
       - name: Copy trusted maintenance code before changing checkout
         run: cp tools/sync-upstream.py "$RUNNER_TEMP/sync-upstream.py"
-      - name: Prepare normal merge and one review PR
+      - name: Prepare policy-aware two-parent merge (no PR)
         id: prepare
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,7 +69,7 @@ jobs:
     permissions:
       statuses: write
     steps:
-      - name: Mark the exact candidate pending without executing its code
+      - name: Mark exact candidate pending without executing it
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
@@ -73,7 +77,7 @@ jobs:
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           gh api "repos/pablovesnine/MHGURecomp/statuses/$CANDIDATE_SHA" \
             --method POST -f state=pending -f context=upstream-sync/aarch64 \
-            -f description='AArch64 candidate validation queued' \
+            -f description='Read-only ARM64 validation queued' \
             -f target_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
   validate:
@@ -81,34 +85,104 @@ jobs:
     if: needs.prepare.outputs.should_validate == 'true'
     permissions:
       contents: read
-    # Local reusable workflows resolve at THIS trusted master's workflow SHA,
-    # never at candidate_sha. No secrets are inherited.
+    # Reusable implementation resolves at THIS trusted workflow SHA.
+    # Candidate scripts never receive a token with Git/API/package write access.
     uses: ./.github/workflows/linux-builder.yml
     with:
       candidate_ref: ${{ needs.prepare.outputs.candidate_sha }}
 
-  report:
+  validation_status:
     needs: [prepare, queue, validate]
-    if: >-
-      always() && needs.prepare.result == 'success' &&
-      needs.prepare.outputs.should_validate == 'true'
+    if: always() && needs.prepare.outputs.should_validate == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
       statuses: write
-      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Publish exact-SHA result and PR run link (trusted code only)
+      - name: Report exact-SHA validation result from trusted code
         env:
           GH_TOKEN: ${{ github.token }}
-          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
-          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          SHA: ${{ needs.prepare.outputs.candidate_sha }}
+          KEY: ${{ needs.prepare.outputs.key }}
           RESULT: ${{ needs.validate.result }}
         run: |
-          python3 tools/sync-upstream.py report \
-            --sha "$CANDIDATE_SHA" --pr "$PR_NUMBER" --result "$RESULT"
+          python3 tools/sync-upstream.py report --phase validation \
+            --sha "$SHA" --key "$KEY" --result "$RESULT"
+
+  promote:
+    needs: [prepare, validate, validation_status]
+    if: >-
+      needs.validate.result == 'success' &&
+      needs.validation_status.result == 'success' &&
+      needs.validate.outputs.source_sha == needs.prepare.outputs.candidate_sha
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      statuses: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Promote only this tested merge with expected master and policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.prepare.outputs.candidate_sha }}
+          BASE: ${{ needs.prepare.outputs.base }}
+          UPSTREAM: ${{ needs.prepare.outputs.upstream }}
+          POLICY: ${{ needs.prepare.outputs.policy }}
+          RESULT: ${{ needs.validate.result }}
+        run: |
+          python3 tools/sync-upstream.py promote --repo "$GITHUB_WORKSPACE" \
+            --sha "$SHA" --base "$BASE" --upstream "$UPSTREAM" --policy "$POLICY" --result "$RESULT"
+
+  publish:
+    needs: [prepare, validate, promote]
+    if: needs.promote.result == 'success'
+    permissions:
+      contents: read
+      actions: read
+      statuses: read
+      packages: write
+    # Explicit call: a GITHUB_TOKEN master push does NOT trigger linux-ci.
+    uses: ./.github/workflows/linux-publisher.yml
+    with:
+      source_sha: ${{ needs.validate.outputs.source_sha }}
+      image_id: ${{ needs.validate.outputs.image_id }}
+      artifact_name: ${{ needs.validate.outputs.artifact_name }}
+
+  report:
+    needs: [prepare, validate, validation_status, promote, publish]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Reuse, reopen or close issue 2 without duplicate notifications
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.prepare.outputs.candidate_sha }}
+          KEY: ${{ needs.prepare.outputs.key }}
+          OUTCOME: ${{ needs.prepare.outputs.outcome }}
+          MESSAGE: ${{ needs.prepare.outputs.message }}
+          PROMOTION: ${{ needs.promote.result }}
+          PUBLICATION: ${{ needs.publish.result }}
+        run: |
+          python3 tools/sync-upstream.py report --sha "$SHA" --key "$KEY" \
+            --outcome "$OUTCOME" --message "$MESSAGE" \
+            --promotion "$PROMOTION" --publication "$PUBLICATION"

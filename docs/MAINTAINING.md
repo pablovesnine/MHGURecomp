@@ -6,7 +6,8 @@ manual PR approval is needed.
 
 ## Automatic upstream updates
 
-**Sync upstream** checks `morerokk/MHGURecomp:master` every six hours and
+**Synchronize upstream after read-only ARM64 validation** checks
+`morerokk/MHGURecomp:master` every six hours, after master pushes, and
 can also be started manually from Actions.
 
 1. Prepare a normal merge using the fork policy.
@@ -31,7 +32,8 @@ An unexpected shared-code conflict stops integration and updates one issue.
 Repeated unchanged blockers do not trigger new builds or duplicate issues.
 Resolve files individually; do not use a blanket merge strategy.
 The issue is closed after its blocking upstream revision is incorporated.
-Test failures remain failures, not successful updates.
+Test failures remain failures, not successful updates. Select
+`retry_validation` on a manual run to retry an unchanged blocker.
 
 ## CI and images
 
@@ -49,8 +51,12 @@ Tools images use
 The publisher verifies master, image identity, platform and source labels;
 it does not execute candidate code. A public image needs no registry login.
 If publication fails after master advanced, retry publication for the same
-validated SHA rather than rolling back source history. A manual master CI
-run can rebuild, validate and publish it if its transport artifact expired.
+validated SHA rather than rolling back source history. The builder summary
+provides the source SHA, image ID, artifact name and run ID for the manual
+**Publish a validated master tools image** workflow. Its transport artifact
+lasts one day. A manual master CI run can rebuild, validate and publish if
+the artifact expired. After successful manual recovery, close issue #2;
+a no-op sync deliberately keeps an unresolved publication warning open.
 
 Read/write Git/API work, read-only candidate execution and packages
 publication use separate jobs. Automation uses short-lived GITHUB_TOKEN;

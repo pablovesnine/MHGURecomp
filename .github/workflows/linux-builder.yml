@@ -18,6 +18,9 @@ on:
       image_id:
         description: ID of the transported tested image
         value: ${{ jobs.check.outputs.image_id }}
+      artifact_name:
+        description: Artifact containing exactly the tested tools image
+        value: ${{ jobs.check.outputs.artifact_name }}
 
 permissions:
   contents: read
@@ -42,6 +45,7 @@ jobs:
       source_sha: ${{ steps.source.outputs.sha }}
       publish: ${{ steps.source.outputs.publish }}
       image_id: ${{ steps.image.outputs.id }}
+      artifact_name: tested-tools-${{ steps.source.outputs.sha }}
     steps:
       - name: Require exact reusable candidate SHA
         env:
@@ -78,8 +82,8 @@ jobs:
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
       - name: Lint shell, workflows and Python regressions
         run: |
-          bash -n tools/build-linux-release.sh tools/docker/*.sh
-          shellcheck tools/build-linux-release.sh tools/docker/*.sh
+          bash -n tools/build-linux-release.sh update-build-arm64.sh tools/docker/*.sh
+          shellcheck tools/build-linux-release.sh update-build-arm64.sh tools/docker/*.sh
           curl --fail --location --silent --show-error --retry 3 \
             https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
             -o "$RUNNER_TEMP/actionlint.tar.gz"
@@ -109,13 +113,14 @@ jobs:
           bash tools/build-linux-release.sh --check --version 0 --jobs 2 \
             --image mhgurecomp-builder:ci --skip-image-build
       - name: Save only the tested tools image
-        if: steps.source.outputs.publish == 'true'
+        # Export the candidate too: promotion must publish this SAME image.
         id: image
         run: |
-          echo "id=$(docker image inspect mhgurecomp-builder:ci --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
+          id=$(docker image inspect mhgurecomp-builder:ci --format '{{.Id}}')
+          echo "id=$id" >> "$GITHUB_OUTPUT"
           docker image save mhgurecomp-builder:ci | gzip > "$RUNNER_TEMP/tools-image.tar.gz"
+          echo "Tested image ID: \`$id\`; source: \`${{ steps.source.outputs.sha }}\`; artifact: \`tested-tools-${{ steps.source.outputs.sha }}\`; run: \`$GITHUB_RUN_ID\`. Manual publication recovery is available for one day." >> "$GITHUB_STEP_SUMMARY"
       - name: Transport the tested image (no game outputs)
-        if: steps.source.outputs.publish == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tested-tools-${{ steps.source.outputs.sha }}
