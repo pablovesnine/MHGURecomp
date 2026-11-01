@@ -211,7 +211,9 @@ Plan and security notes: docs/research/internet-hubs.md.
   "Check hub server" row: LIST with the server / key being edited (ldn_hub_check, a thread), showing "Online, N ms,
   N hub(s)" or the failure; before a check it shows the last state the game's own searches / hub saw for that server.
 - Key -> room: first 16 bytes of SHA-256("MHGURecomp matchmaking key:" + key, spaces around it trimmed), all zero
-  without a key (updater/sha256.c is linked into the game for it). The server lists a hub only for requests with the
+  without a key (updater/sha256.c is linked into the game for it). Android without a key: the room of the key
+  `public-phone`, so phones don't meet PCs in public, and no key reaches the all-zero room; PCs can still enter that
+  key by hand, and the check is only in the client. The server lists a hub only for requests with the
   same room and link PROTO_VERSION; JOIN with another room answers "not found".
 - Host (ldn.c lobby_thread): Create Hub also lists the hub (HOST with its NetworkInfo; UPDATE on every
   push_info_locked change; PING every 15 s; reconnects after 10 / 30 s). For each INCOMING ticket it opens a second
@@ -903,6 +905,14 @@ debug variables, the message box) beside linux.c; linux.c's fault handler reads 
 the unwinder's backtrace; umask 007; the startup messages name the Android folder; screenshots by absolute path.
 VulkanMemoryAllocator 3.4.0's header vendored in third_party/vk_mem_alloc (the Windows build keeps MSYS2's). Windows
 rebuilt and quick-hunted after it: unchanged.
+
+## FSR 4 removed (2026-11-01)
+
+`Upscaler = FSR4` is gone: fsr4.c / fsr4.h, third_party/ffx-api, docs/FSR4-PORT.md, the FSR4_DRIVER_PATCH build option
+and the settings row. A release could only use it with a loader DLL the player supplied, the maintainer's GPU can't test
+it, and bundling AMD's SDK DLLs (PR 168) would add 36 MB (uncompressed) for few players. FSR 3.1 stays. An ini that still
+has `Upscaler = ...` loads as before: the line is logged as an unknown setting, ignored and kept. The instance asks for
+Vulkan 1.2 in every case now.
 
 ## Next steps
 1. Modding tools: decode resident.arc tables (weapon00..14 Base/Level data: record layouts derivable from the game
