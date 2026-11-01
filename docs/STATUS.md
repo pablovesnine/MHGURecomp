@@ -76,7 +76,8 @@ Fixed on the way (2026-10-20):
 - Performance: device-local vertex cache refreshed per written page (page write tracking): guest copies went from
   ~880 MB/s to ~8 MB/s; mailbox presentation (FIFO with 2 images held the game at ~26 fps).
 - Settings: mhgurecomp.ini in the game folder (runtime/config.c; written with the defaults when missing): Mode = Fullscreen /
-  Windowed / Borderless, Resolution = WxH or Desktop, RenderResolution = Auto or WxH, FPS = 30..240, VSync. Alt+Enter
+  Windowed / Borderless, Resolution = WxH or Desktop (the screen's real pixels: on a scaled Wayland desktop, SDL's desktop
+  size x its pixel density), RenderResolution = Auto or WxH, FPS = 30..240, VSync. Alt+Enter
   toggles windowed / full screen. The 3D resolution is the game's own docked render size (main 0xdbcd34 / 0xdbcd38,
   `mov` 1920 / 1080, the constants the 4K-2K mod patches): tools/gen.py PATCHES makes those two instructions read
   g_render_size. Overrides for test runs: MHGU_CONFIG=<file>, MHGU_WINDOW=WxH (windowed), MHGU_RENDER=WxH,
@@ -92,6 +93,25 @@ Fixed on the way (2026-10-20):
   with MHGU_CONTROL "gpuprof" (GPU timestamps per pass): the multisampled passes cost ~3 ms more at 4x, a colour
   resolve ~1.6 ms, the depth / stencil resolve ~9 ms (the driver decompressing it; Vulkan 1.2 render pass resolves
   were as slow, and a sampleable multisampled image loses its compression: passes several times slower).
+  Menus that show 3D models (Character Select, Guild Card, the smithy and item box equipment previews) draw them
+  straight into the finished picture, after the game's FXAA pass, in the same pass as the menu's 2D draws, so they had
+  no anti-aliasing whatever the settings. A full-size colour target that gets depth-writing draws without MSAA past
+  the game's FXAA pass is marked (TexBackend.ms_models, exec.c full_picture), and from the next frame on its models
+  get the player's anti-aliasing (models_aa):
+  - MSAA: the first depth-testing draw (or depth clear) into it copies the picture, and the depth the models test
+    against unless cleared, into every sample of the multisampled companions (ms_expand; without
+    VK_EXT_shader_stencil_export the stencil starts at 0, as vk_ms_resolve drops it). The 2D draws around the models
+    stay without MSAA. Only a frame that alternates models and 2D keeps its 2D after the first model in the samples,
+    from the frame after one (models_2d_in_samples), shaded per sample (else the seams between their quads show), so
+    it costs one copy and one resolve a frame. Needs sampleRateShading. Measured on a Radeon iGPU, MSAA 4x, FXAA on,
+    1920x1080, Forge Armor: 33 -> 64 FPS without per-sample 2D (the Smithy room behind it: 67).
+  - FXAA: the picture is copied before each run of model draws and after it, and FXAA 3.11 ("fxaa.frag.models", luma
+    from the colour) is drawn over it only where the models changed it and next to that (models_fxaa_end), so the 2D
+    around them stays sharp, and only in the area the run's draws could reach (a preview's panel, 551x590 at 1080p:
+    the test reads 18 texels per pixel; on that iGPU, MSAA off, 78 -> 90 FPS). Both FXAA modes: the game's own FXAA
+    shader only runs in its pass.
+  - FSR, or anti-aliasing off: none. FSR runs at its start of the HUD, before them, and never sees them.
+  The 3D scene's passes (before the FXAA pass) keep their rules.
 - FXAA (settings FXAA = On / Off): the game's FXAA pass is recognised by its fragment shader's code hash
   (FXAA_FS_HASH, exec.c) and becomes a copy of its input when off.
   FXAAMode = 3_11 draws FXAA 3.11 Quality there instead (exec.c fxaa_311, shaders.c "fxaa.frag": preset 39, no
@@ -781,6 +801,109 @@ the reads.
   millisecond with the CPU cycles it used; tools/samples.py reads it (timeline / top / wait, game functions as their
   guest addresses). Sleeping threads are sampled every 16th round, for where they wait.
 
+## Discord Rich Presence (2026-10-31, branch feat/discord-rich-presence)
+
+ini [Discord] RichPresence / ShowHunter (settings menu: Network tab), both live. runtime/net/discord.c talks to the
+Discord app over its local RPC (named pipe `\\.\pipe\discord-ipc-N`; on Linux the discord-ipc-N socket in
+$XDG_RUNTIME_DIR, Flatpak and Snap paths too) as application 1566091085493571724 ("Monster Hunter GU Recomp", owned by
+morerokk): handshake, then SET_ACTIVITY with the latest state at most every 4 s (Discord's rate limit); turning it off
+closes the connection, which clears the profile. No Discord: a try every 15 s. runtime/hle/presence.c reads the game
+once a second from the input polling (game thread): town / quest, map and zone, quest targets, hunter, party; field
+addresses are in its header comment. A town shows "Bherna Village" / "Hub (online)" and "Name, HR 83 - Long Sword";
+a quest "Hunting Great Maccao, Yian Kut-Ku, Malfestio" and "Jurassic Frontier, Area 1", the quest's name and the
+hunter in the images' hover texts, the time since departing; (2 of 4) in a hub (ldn_party: the hub's
+NetworkInfo node count, its session id as the party id) or a multiplayer quest (sQuestSelector join count).
+Texts: monster and quest names from the game's English GMDs (romfs_host_path, so mods' copies count); map names and
+weapon type names are tables in presence.c (the game draws map names as pictures; stage 15 and town type 5 unknown).
+Tested on Windows (2026-10-31, test save, Discord running): town (Wycademy = town type 6), quest 404 (Volvidon, camp
+then Area 1 while walking), quest 521 (all large monsters: the large monster list), both settings toggled in the menu.
+Not tested yet: online hubs and the party size, Linux, the Hub / Pub / other villages' names in game.
+Images are art assets of the Discord application (uploaded in its Developer Portal, used by key): "logo" as
+the large image, a pixel-art icon per weapon type as the small one (presence.c g_weapon_icons; a fan-made sprite
+sheet, used with permission). Next: map pictures as the large image in quests.
+
+## Mouse look on the camera's angles (2026-10-31)
+
+In a hunt the captured mouse turns the camera itself (runtime/hle/mousecam.c): each count is 0.08 degrees x
+[Mouse] MouseSensitivity, at once (no dead zone, no speed curve, no smoothing lag), where the stick emulation it
+replaces had a minimum turn speed. The quest camera (uQuestCamera, DTI 0x184d8b8, 0xb00 bytes; code 0x218000-0x22a400)
+keeps its angles as 16-bit units: +0x9e8 / +0x9ec the pitch / yaw it heads for, +0x9e0 / +0x9e4 the smoothed ones
+(0x225308: stepped toward those by 0x21c3cc), +0x9d8 / +0x9dc the ones the eye is placed by (the smoothed ones, the
+pitch then lifted off the ground, 0x223d80). Its right stick handler 0x2255cc (r0 = camera, r1 = invert bits; called
+by the normal update 0x224e54 with +0x97c, and at 0x22713c with +0x980) reads the player's camera actions 1-4 (up,
+down, left, right: vfunc 0x2e8 of the player at camera +0x85c, bits of player +0x1434) and the stick's tilt (vfunc
+0x238), turns by a speed from the camera's parameters at options byte +0x65 (camera speed), and clamps the pitch to
++-0x3f00; later code clamps it again to -0x2f00..0x2800 (down 66, up 56 degrees, measured). The game only calls it
+while the player may turn the camera, so it is hooked: after it, the counts moved since the last update are added to
+the heading and smoothed angles together. The game's invert option (options byte +0x64: bit 0 up / down, bit 1 left /
+right; copied to camera +0x97c by 0x2220f8, and +0x68 to +0x980) is applied from r1. The game's camera speed is not
+(MouseSensitivity is). Options object: *0x1a8ca48 (+0x63, 0-4, is copied to camera +0x434 too; not identified).
+host_input.c gives the mouse to the camera while the handler ran in the last 200 ms (mousecam_active); otherwise
+(villages, whose camera doesn't turn; other cameras; cutscenes) to the right stick as before.
+Tested 2026-10-31 in quest 101 with the control file's mousemove: 500 counts = 40 degrees left and right, 20 counts
+turn 1.6 degrees, 1 count a second still turns; pitch stops at the game's limits and comes back at once; all four
+invert settings; the in-quest start menu (the camera turns there with the stick too). Not tried by hand with a real
+mouse, nor with a gunner's aim, mounting or the second camera type (+0x980).
+
+## Mouse wheel on the item bar (2026-10-31)
+
+The captured mouse's wheel turns the item bar directly (runtime/hle/itembar.c): up the item to the left, down to the
+right, one item per notch, without holding L; middle click is a second default key for Y (use the item / sheathe;
+existing ini files keep their `Y = R` until changed). The player keeps the selected pouch slot at +0x3298 (u16; 0x28
+the empty "(No Item)" place at the bar's left end, else the pouch slot). Found by diffing the player's memory around
+L+A / L+Y (control file `memsave`), then the writers of +0x3298 in the lifted code: the item bar handler 0x4f7f38
+(r0 = the player, every update from 0x49baf4) checks f_47bcd0 == 1, f_47b918 == 0 and vfunc +0x230(player, 1) == 1,
+then, with the bar open (vfunc +0x25c(player, 1); L held) or for the actions 0x43 / 0x44 (vfunc +0x2e8; no L
+needed), actions 0xa / 0x44 go right and 9 / 0x43 left: +0x3298 = f_4880fc(player, slot, 0 right / 1 left) (through
+0x39bfcc on the pouch: skips empty and unusable slots, stops at the left end) and +0x253c |= 2 (right) / 4 (left).
+The handler is hooked; after it a waiting notch does the same past the same checks (one per update, at most 4
+waiting; dropped when the player may not pick an item or outside a hunt). Note: vtables are in main's image (below
+0x08000000), so a heap-range check on them fails. Tested 2026-10-31 in quest 101 (test save, John Rise) with the
+control file's new `wheel <notches>`: 0x28 -> 0 Potion -> 1 Mega Potion -> 2 3 4 -> 7 (5 and 6 empty, skipped) -> 8
+-> 9 and back, the HUD's item and count following. Tried by hand with a real mouse by the user: works.
+
+Rebindable since: [Keybinds] ItemLeft / ItemRight (BIND_ITEM_LEFT / RIGHT, defaults Wheel Up / Wheel Down) turn the
+bar one item per press of their keys or buttons, or per notch of the wheel. The wheel is a key of its own
+(KEY_WHEEL_UP / DOWN = KEY_MOUSE + 0x10 / 0x11, "Wheel Up" / "Wheel Down"), usable on any keybind: on the others a
+notch is a 70 ms press. The settings menu takes a turn of the wheel when choosing a key (settings_panel_wheel).
+Existing ini files get the two lines when the settings are next saved, and keep their defaults until then. The
+default ini text now has `Y = R, Mouse Middle` (the first commit changed only the built-in default). Tested in quest
+101: defaults, and ItemLeft = Wheel Down / ItemRight = Wheel Up from the ini, through the control file's `wheel`.
+The menu shows the Item bar rows. Not tested: choosing the wheel in the menu (needs a real wheel event), a keyboard
+key on ItemLeft / ItemRight, the wheel on a button keybind.
+
+## BC textures without GPU support (2026-10-31, branch feat/android-build)
+
+First step of the Android build (docs/research/android.md): Adreno and Mali drivers on Android have no
+textureCompressionBC, and the renderer then made an RGBA8 image and uploaded nothing into it (textures.c only decoded
+ASTC on the CPU): with BC off, the terrain, models and most of the HUD were black. `MHGU_NO_BC=1` now makes a desktop
+GPU report no BC (g_vk.bc; format_supports refuses the BC formats), to test it on PC.
+- Which formats: a title -> town -> quest 101 run made 115 BC1 (nvn 0x42), 115 BC3 (0x44), 23 BC4 UNORM (0x49) and
+  13 BC5 UNORM (0x4b) textures; no BC2, BC6H, BC7 or ASTC. The village (MHGU_QUICKHUNT=town) asked for nothing else
+  (the "not supported: RGBA8 instead" line is now logged once per format, so a missing one shows in the log).
+- runtime/nvn/bcn.c decodes BC1-BC5 (UNORM and SNORM) on upload as the ASTC path does: BC1-3 to RGBA8 (sRGB kept),
+  BC4 to R8, BC5 to RG8 (TexBackend.bcn). vk_tex_decoded / vk_tex_decode cover both decoders. BC6H / BC7 are not
+  decoded (none seen): they would still be the blank RGBA8 image.
+- Copies from a buffer into such a texture (exec.c copy_buffer_to_texture) were dropped for ASTC; they now decode
+  too, for ASTC and BC.
+- Result (quest 101, 1280x720, no MSAA / FXAA): looks the same as the GPU's decode, also zoomed 3x. Pixel
+  differences against a native run, ground region: mean 1.2 codes, 26% of pixels more than 2 apart, 0.3% more than 8
+  (two native runs: 0.2, 4%, 0.1%). That is rounding: NVIDIA interpolates BC1 / BC4 with its own precision, bcn.c
+  with the spec's rounded 8-bit formula. With BC on, the build matches the previous one within run-to-run noise.
+
+## Android build (2026-10-31, branch feat/android-build)
+
+`make PLATFORM=android ABI=x86_64|arm64-v8a` builds an APK (android/android.mk, android/apk.mk: the NDK, the SDK's
+CMake and build tools, no Gradle). In the Android 15 x86_64 emulator the game boots, translates its shaders and
+quick-hunts into quest 101, drawn as on PC, also with MHGU_NO_BC=1. Build and test instructions, how it is put
+together and what is left: docs/research/android.md. Runtime changes for it, all under `__ANDROID__` (or per
+architecture) except the shared ones noted: GUEST_BASE 64 GB on Android (cpu.h: the desktop game library's id changes
+once with it); libmhgugame.so loaded by name; SDL_main; runtime/platform/android.c (the app's folder, env.txt for the
+debug variables, the message box) beside linux.c; linux.c's fault handler reads arm64 registers too, and bionic gets
+the unwinder's backtrace; umask 007; the startup messages name the Android folder; screenshots by absolute path.
+VulkanMemoryAllocator 3.4.0's header vendored in third_party/vk_mem_alloc (the Windows build keeps MSYS2's). Windows
+rebuilt and quick-hunted after it: unchanged.
+
 ## Next steps
 1. Modding tools: decode resident.arc tables (weapon00..14 Base/Level data: record layouts derivable from the game
    code that reads them), monster files per `arc/enemy/emXXX_YY.arc` (`attackdata`, `bodydata`, `dtbase`,
@@ -1073,7 +1196,8 @@ G Rank), Chamberlyne > Downloadable Content > Claim Items lists the packs and cl
 Slickaxe x20). Palico downloads not checked. The quest ARCs equal the RomFS files byte for byte, so a donor-free
 version (building the regions from the RomFS) is possible once the flag bits and the pack / Palico records are known.
 
-Controls: see `runtime/host_input.c` (keyboard and mouse: WASD, mouse look (relative mode after a click, Esc releases; the mouse speed smoothed
+Controls: see `runtime/host_input.c` (keyboard and mouse: WASD, mouse look (relative mode after a click, Esc releases; in a
+hunt the camera's angles directly, runtime/hle/mousecam.c; elsewhere the mouse speed smoothed
 over 25 ms as the right stick tilt, offset past the camera's round ~39% stick dead zone; ini [Mouse] MouseSensitivity), clicks = X / A, Space / R = B / Y, Tab / T = ZL / ZR,
 arrows = d-pad, Ctrl / Alt = stick clicks, Enter = Plus; SDL gamepads (all open, the one a button was last pressed on is
 read: a Steam Deck with a controller plugged in has two, and taking the first one SDL listed left the player's pad dead;

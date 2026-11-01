@@ -1,0 +1,114 @@
+name: Sync upstream for human review
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      retry_validation:
+        description: Retest the unchanged candidate (otherwise tested SHAs are skipped)
+        type: boolean
+        default: false
+      cleanup_legacy:
+        description: Delete linux-arm64-0118 only if its exact tip is already in master
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync-master
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'pablovesnine/MHGURecomp' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    outputs:
+      candidate_sha: ${{ steps.prepare.outputs.candidate_sha }}
+      pr_number: ${{ steps.prepare.outputs.pr_number }}
+      should_validate: ${{ steps.prepare.outputs.should_validate }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          # Only the Git-only preparer may push; never execute candidate files.
+          persist-credentials: true
+      - name: Copy trusted maintenance code before changing checkout
+        run: cp tools/sync-upstream.py "$RUNNER_TEMP/sync-upstream.py"
+      - name: Prepare normal merge and one review PR
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RETRY: ${{ inputs.retry_validation }}
+          CLEANUP_LEGACY: ${{ inputs.cleanup_legacy }}
+        run: |
+          args=()
+          if [[ "$RETRY" == true ]]; then args+=(--retry); fi
+          if [[ "$CLEANUP_LEGACY" == true ]]; then args+=(--cleanup-legacy); fi
+          python3 "$RUNNER_TEMP/sync-upstream.py" prepare --repo "$GITHUB_WORKSPACE" "${args[@]}"
+
+  queue:
+    needs: prepare
+    if: needs.prepare.outputs.should_validate == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Mark the exact candidate pending without executing its code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+        run: |
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/pablovesnine/MHGURecomp/statuses/$CANDIDATE_SHA" \
+            --method POST -f state=pending -f context=upstream-sync/aarch64 \
+            -f description='AArch64 candidate validation queued' \
+            -f target_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+  validate:
+    needs: [prepare, queue]
+    if: needs.prepare.outputs.should_validate == 'true'
+    permissions:
+      contents: read
+    # Local reusable workflows resolve at THIS trusted master's workflow SHA,
+    # never at candidate_sha. No secrets are inherited.
+    uses: ./.github/workflows/linux-builder.yml
+    with:
+      candidate_ref: ${{ needs.prepare.outputs.candidate_sha }}
+
+  report:
+    needs: [prepare, queue, validate]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      needs.prepare.outputs.should_validate == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Publish exact-SHA result and PR run link (trusted code only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          RESULT: ${{ needs.validate.result }}
+        run: |
+          python3 tools/sync-upstream.py report \
+            --sha "$CANDIDATE_SHA" --pr "$PR_NUMBER" --result "$RESULT"

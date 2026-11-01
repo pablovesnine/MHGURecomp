@@ -56,6 +56,11 @@ int main(int argc, char **argv) {
     assert(config_live_msaa()==4 && !config_live_vsync() && !config_live_fxaa());
     assert(config_live_face_buttons()==FACE_LABEL && !config_live_background_input());
     assert(config_live_mouse_sensitivity()==2.5f && camera_fovy(0.5f,g_render_aspect)<camera_before);
+    assert(camera_fovy(0.5f,g_render_aspect*1.002f)<camera_before && camera_fovy(0.5f,g_render_aspect*1.1f)==0.5f); // (pixel rounding)
+    float aspect_was=g_render_aspect; uint32_t size_was[2]={g_render_size[0],g_render_size[1]};
+    g_render_aspect=3.57778f, g_render_size[0]=426, g_render_size[1]=118; // (FSR Ultra Performance at 1280x720: 0.9% off)
+    assert(camera_fovy(0.5f,426.0f/118.0f)!=0.5f && camera_fovy(0.5f,3.3f)==0.5f);
+    g_render_aspect=aspect_was, g_render_size[0]=size_was[0], g_render_size[1]=size_was[1];
     assert(g_config.fps==60 && g_config.fxaa==1 && g_config.face_buttons==FACE_POSITION); // Boot snapshot is immutable.
     c.hp.quest[0] = c.hp.quest[1]; c.hp.quests = 1;
     assert(config_save(&c, error, sizeof error));
@@ -85,7 +90,7 @@ int main(int argc, char **argv) {
     assert(strstr(text, "Language = Spanish") && strstr(text, "ButtonIcons = PlayStation"));
     // Invalid edits must leave both the file and the live audio setting intact.
     Config bad=c;bad.menu_confirm=3;assert(!config_save(&bad,error,sizeof error));
-    bad=c;bad.menu_scale=99;assert(!config_save(&bad,error,sizeof error));
+    bad=c;bad.menu_scale=49;assert(!config_save(&bad,error,sizeof error));
     bad.menu_scale=201;assert(!config_save(&bad,error,sizeof error));
     bad = c; bad.button_icons = 3;
     assert(!config_save(&bad, error, sizeof error));
@@ -196,6 +201,16 @@ int main(int argc, char **argv) {
     assert(config_parse(bind_b, " comma ,Mouse 5", &keys) && keys.binds[BIND_B][0] == SDL_SCANCODE_COMMA &&
            keys.binds[BIND_B][1] == KEY_MOUSE + SDL_BUTTON_X2);
     config_format(bind_b, &keys, value, sizeof value); assert(!strcmp(value, "Comma, Mouse 5"));
+    {  // the wheel: a key of its own, on the item bar by default
+        Config wheel = keys;
+        assert(config_editable().binds[BIND_ITEM_LEFT][0] == KEY_WHEEL_UP && !config_editable().binds[BIND_ITEM_LEFT][1]);
+        assert(config_editable().binds[BIND_ITEM_RIGHT][0] == KEY_WHEEL_DOWN);
+        assert(config_editable().binds[BIND_Y][1] == KEY_MOUSE + SDL_BUTTON_MIDDLE);
+        assert(config_setting("itemleft") == config_bind_setting(BIND_ITEM_LEFT));
+        assert(config_parse(bind_b, "wheel down, Mouse 4", &wheel) && wheel.binds[BIND_B][0] == KEY_WHEEL_DOWN &&
+               wheel.binds[BIND_B][1] == KEY_MOUSE + SDL_BUTTON_X1);
+        config_format(bind_b, &wheel, value, sizeof value); assert(!strcmp(value, "Wheel Down, Mouse 4"));
+    }
     Config parsed = keys;
     assert(!config_parse(bind_b, "F12", &keys) && !config_parse(bind_b, "Escape", &keys) && !config_parse(bind_b, ",", &keys));
     assert(!config_parse(bind_b, "A, B, C", &keys) && !config_parse(bind_b, "NoSuchKey", &keys));

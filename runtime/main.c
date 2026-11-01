@@ -8,15 +8,30 @@
 #include "camera_jitter.h"
 #include "gamelib.h"
 #include "hle.h"
+#include "hle/itembar.h"
+#include "hle/mousecam.h"
 #include "kernel.h"
 #include "mods.h"
 #include "app_actions.h"
+#include "net/discord.h"
+#ifdef __ANDROID__
+#include <SDL3/SDL_main.h>  // (main becomes SDL_main, which SDL's Java activity calls in libmain.so)
+#endif
 
 #ifndef MHGU_VERSION
 #define MHGU_VERSION "unknown"  // (the Makefile gives the build's release: VERSION)
 #endif
 
 const char *g_game_dir = "game";  // folder holding exefs/ and romfs/ (the player's own dump)
+
+// where the player puts the game files, for the messages below
+#ifdef __ANDROID__
+#define DATA_FOLDER "Android/data/io.github.morerokk.mhgurecomp/files/data on this device"
+#define DATA_SUB(s) "data/" s
+#else
+#define DATA_FOLDER "the data folder next to mhgurecomp.exe"
+#define DATA_SUB(s) "data\\" s
+#endif
 
 // rtld normally runs every module's DT_INIT (which registers it with musl and runs its init_array) before
 // nnMain: nn::init::Start calls its third argument right after nnosInitialize (SDK constructors run early) and its
@@ -62,9 +77,12 @@ static void boot(const char *root) {
     movelog_init();  // (debug, MHGU_LOG_MOVES: runtime/hle/movelog.c)
     quickhunt_init();  // (debug, MHGU_QUICKHUNT: runtime/hle/quickhunt.c)
     camjit_init();  // (FSR: the main camera and its jitter: runtime/hle/camera_jitter.c)
+    mousecam_init();  // (mouse look on the hunt camera's angles: runtime/hle/mousecam.c)
+    itembar_init();  // (the mouse wheel on the item bar: runtime/hle/itembar.c)
     emtrace_init();  // (debug, MHGU_EMTRACE: runtime/hle/emtrace.c)
     kotrace_init();  // (debug, MHGU_KOTRACE: runtime/hle/kotrace.c)
     cheats_init();  // (cheat codes from cheats/: runtime/cheats.c)
+    discord_init();  // (Discord Rich Presence: runtime/net/discord.c, runtime/hle/presence.c)
     { void sampler_init(void); sampler_init(); }  // (debug, Windows, MHGU_SAMPLE: runtime/sampler.c)
 
     uint32_t stack_size = 0x100000;
@@ -125,8 +143,8 @@ int main(int argc, char **argv) {
         snprintf(main_path, sizeof main_path, "%s/exefs/main", data);
         FILE *f = fopen(main_path, "rb");
         if (!f) {
-            const char *msg = "The game files were not found. Put your own dump's exefs and romfs folders in the data "
-                              "folder next to mhgurecomp.exe (data\\exefs, data\\romfs).";
+            const char *msg = "The game files were not found. Put your own dump's exefs and romfs folders in "
+                              DATA_FOLDER " (" DATA_SUB("exefs") ", " DATA_SUB("romfs") ").";
             fprintf(stderr, "%s\n", msg);
             plat_error_box(msg);
             return 1;
@@ -137,8 +155,8 @@ int main(int argc, char **argv) {
         bool ok = fread(hdr, 1, sizeof hdr, f) == sizeof hdr && !memcmp(hdr, "NSO0", 4) && !memcmp(hdr + 0x40, want, 8);
         fclose(f);
         if (!ok) {
-            const char *msg = "The game files in the data folder are not version 1.4.0 of Monster Hunter Generations "
-                              "Ultimate (data\\exefs\\main, build id FB08F1D20FD1204F). Dump the game with its 1.4.0 "
+            const char *msg = "The game files in " DATA_FOLDER " are not version 1.4.0 of Monster Hunter Generations "
+                              "Ultimate (exefs/main, build id FB08F1D20FD1204F). Dump the game with its 1.4.0 "
                               "update applied (exefs from the update, romfs merged).";
             fprintf(stderr, "%s\n", msg);
             plat_error_box(msg);
@@ -155,9 +173,9 @@ int main(int argc, char **argv) {
         bool have_shaders = stat(shaders, &st) == 0;
         if (nfiles >= 0 && (nfiles < 35000 || !have_shaders)) {
             char msg[700];
-            snprintf(msg, sizeof msg, "The game files in data\\romfs are incomplete: %d files, where Monster Hunter "
+            snprintf(msg, sizeof msg, "The game files in " DATA_SUB("romfs") " are incomplete: %d files, where Monster Hunter "
                      "Generations Ultimate 1.4.0 has 35531%s. Extract the romfs again with the 1.4.0 update applied (the "
-                     "base game's files with the update's merged over them) and replace data\\romfs with it.", nfiles,
+                     "base game's files with the update's merged over them) and replace " DATA_SUB("romfs") " with it.", nfiles,
                      !have_shaders ? ", and nativeNX\\system\\app_shader\\AppShaderPackage.mfx is missing" : "");
             fprintf(stderr, "%s\n", msg);
             plat_error_box(msg);
