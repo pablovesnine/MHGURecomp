@@ -1,5 +1,9 @@
 # Android build (planned 2026-10-25, assessed and started 2026-10-31: runs in the emulator)
 
+> Historical upstream research, retained for context. Android packaging
+> entry points have been removed from this Linux ARM64 fork; the commands
+> below are not supported here. See the [fork README](../../README.md).
+
 Goal: the port on Android phones / tablets, played with a controller (Bluetooth or USB). No touch controls: the game
 doesn't suit them, so none are planned. Players bring their own dump as on PC; the APK holds no game files.
 

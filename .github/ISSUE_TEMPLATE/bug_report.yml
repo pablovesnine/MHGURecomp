@@ -1,11 +1,13 @@
-name: Bug report
-description: Something in MHGU Recomp doesn't work as it should.
+name: Linux ARM64 bug report
+description: A build or device problem in the Linux ARM64 fork.
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting! Mods can sometimes cause problems that look like recomp bugs, so it helps to say whether you were using any.
-        If a mod looks like the cause, you're welcome to also share it in the [mod directory](https://github.com/Oddity-git/MHGURecomp-mods/issues/new?template=report-mod-issue.yml), which keeps track of mod issues. That's entirely optional, and you can report it here either way.
+        This fork supports Linux ARM64 through a Docker cross-build on x86_64 Linux.
+        Report ARM64 problems here, not to the upstream maintainer.
+        Try a clean profile without mods or cheats when possible.
+        Do not attach game data, mhgugame.so, generated sources, caches or saves.
   - type: dropdown
     id: mods
     attributes:
@@ -34,26 +36,28 @@ body:
   - type: input
     id: version
     attributes:
-      label: MHGU Recomp version
-      placeholder: "0.10.7"
+      label: Full source commit SHA and local version label
+      description: Use git rev-parse HEAD in the build checkout.
+      placeholder: "Full 40-character SHA; local label 0.13.0"
     validations:
       required: true
   - type: dropdown
-    id: platform
+    id: stage
     attributes:
-      label: Platform
+      label: Failure stage
       options:
-        - Windows
-        - Linux
-        - Steam Deck
+        - Docker image preparation
+        - Public ARM64 checks without a dump
+        - Private local game build or packaging
+        - Running on an ARM64 Linux device
     validations:
       required: true
   - type: input
     id: hardware
     attributes:
-      label: Hardware
-      description: CPU and GPU, and on Linux the distribution.
-      placeholder: "Ryzen 5 5600, RX 6700 XT, Fedora 44"
+      label: Build host and ARM64 device
+      description: Include host distro, Docker version/rootless status, device distro/kernel, GPU and driver.
+      placeholder: "Host Fedora x86_64; device Odin 3, ArmadaOS, kernel and Vulkan driver versions"
     validations:
       required: false
   - type: textarea
@@ -61,7 +65,9 @@ body:
     attributes:
       label: Log
       description: |
-        Attach `log.txt` by dragging it into this box. It's next to `mhgurecomp.exe` (on Linux, next to `mhgurecomp`).
-        The game replaces it every time it starts, so copy it right after the problem, before starting the game again.
+        Attach redacted terminal output or log.txt. A desktop launch writes log.txt
+        beside mhgurecomp; a terminal launch normally writes to stderr.
+        Copy the log immediately after the problem. Remove personal paths,
+        network addresses, names and any private game data before sharing.
     validations:
       required: false

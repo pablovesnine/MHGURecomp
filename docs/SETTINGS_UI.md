@@ -1,5 +1,9 @@
 # Host settings overlay
 
+In this Linux ARM64 fork, the inherited `Updates` setting is retained for
+configuration compatibility only. No binary updater is built or shipped,
+so that setting does not trigger downloads or installations.
+
 Minus + Plus (Back/Select + Start) or F1 opens a single panel inside the game.
 Insert still opens Forge. Options, Save and Reset share one scrolling flow, in that order.
 Back appears only as a guide beneath the options. Discard is available only
