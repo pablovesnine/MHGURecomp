@@ -17,6 +17,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 
 args = sys.argv[1:]
 with open(os.environ["ENGINE_LOG"], "a") as stream:
@@ -34,7 +35,20 @@ elif args[0] == "info":
     else:
         print('["name=rootless"]' if os.environ.get("ENGINE_ROOTLESS") == "true" else "[]")
 elif args[:2] == ["image", "inspect"]:
-    print("sha256:" + "a" * 64)
+    if os.environ.get("ENGINE_MISSING") == "true" and not Path(os.environ["ENGINE_LOG"] + ".built").exists():
+        raise SystemExit(1)
+    rev = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    print("sha256:" + "a" * 64, "linux", os.environ.get("ENGINE_ARCH", "amd64"),
+          os.environ.get("ENGINE_REVISION", rev))
+elif args[0] == "pull":
+    if os.environ.get("ENGINE_PULL_EXIT", "1") == "0":
+        Path(os.environ["ENGINE_LOG"] + ".built").touch()
+    raise SystemExit(int(os.environ.get("ENGINE_PULL_EXIT", "1")))
+elif args[0] == "build":
+    context = Path(args[-1])
+    assert (context / "docker/Dockerfile").read_text() == "tracked tools fixture\n"
+    assert not (context / "private.txt").exists()
+    Path(os.environ["ENGINE_LOG"] + ".built").touch()
 elif args[0] == "run":
     raise SystemExit(int(os.environ.get("ENGINE_EXIT", "0")))
 """
@@ -55,8 +69,9 @@ class InterfaceTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.repo = self.root / "checkout with spaces"
         self.repo.mkdir()
-        (self.repo / "tools").mkdir()
+        (self.repo / "tools/docker").mkdir(parents=True)
         shutil.copy(ROOT / "tools/build-linux-release.sh", self.repo / "tools")
+        (self.repo / "tools/docker/Dockerfile").write_text("tracked tools fixture\n")
         (self.repo / ".gitignore").write_text(
             ".linux-release/\ndist/\n")
         self.git("init", "-q")
@@ -106,26 +121,98 @@ class InterfaceTests(unittest.TestCase):
         (self.repo / "untracked-private.txt").write_text("must not be exported")
         result = self.release()
         self.assertEqual(result.returncode, 0, result.stderr)
-        build = next(c for c in self.commands() if "build" in c)
-        self.assertEqual(build[-1], "tools")
+        self.assertFalse(any("build" in c or "pull" in c for c in self.commands()))
+        inspected = next(c for c in self.commands() if "image" in c)
+        revision = self.git("rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(inspected[-1],
+                         "ghcr.io/pablovesnine/mhgurecomp-builder:" + revision)
         command = self.run_command()
         self.assertIn(str(self.game) + ":/game:ro,z", command)
         self.assertIn("--user", command)
-        self.assertEqual(command[-4:], ["release", "0.12.0", "2", ""])
+        self.assertEqual(command[-6:], ["sha256:" + "a" * 64, "release",
+                                      "0.12.0", "2", revision,
+                                      "sha256:" + "a" * 64])
         exported = list((self.repo / ".linux-release").glob("*/src"))
         self.assertEqual(len(exported), 1)
         self.assertTrue((exported[0] / "tools/build-linux-release.sh").is_file())
         self.assertFalse((exported[0] / "untracked-private.txt").exists())
 
     def test_check_has_no_game_or_output_mount(self):
-        result = self.run_script("--check", "aarch64", "--version", "0.12.0",
-                                 "--skip-image-build")
+        result = self.run_script("--check", "--version", "0", "--jobs", "3",
+                                 "--image", "mhgurecomp-builder:ci", "--skip-image-build")
         self.assertEqual(result.returncode, 0, result.stderr)
         command = self.run_command()
         self.assertFalse(any(":/game:" in value or ":/out:" in value
                              for value in command))
-        self.assertEqual(command[-4:], ["check", "0.12.0", "2", "aarch64"])
+        self.assertEqual(command[-5:-2], ["check", "0", "3"])
         self.assertFalse(any("build" in c for c in self.commands()))
+
+    def test_missing_image_falls_back_to_tracked_tools(self):
+        (self.repo / "tools/private.txt").write_text("untracked private fixture")
+        self.env["ENGINE_MISSING"] = "true"
+        result = self.release()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any("pull" in c for c in self.commands()))
+        build = next(c for c in self.commands() if "build" in c)
+        revision = self.git("rev-parse", "HEAD").stdout.strip()
+        self.assertIn("SOURCE_REVISION=" + revision, build)
+        self.assertIn("mhgurecomp-builder:" + revision, build)
+        self.assertTrue(build[-1].endswith("/tools"))
+        self.assertNotIn(":latest", " ".join(sum(self.commands(), [])))
+
+    def test_available_remote_image_is_pulled_without_rebuild(self):
+        self.env.update(ENGINE_MISSING="true", ENGINE_PULL_EXIT="0")
+        result = self.release()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any("pull" in c for c in self.commands()))
+        self.assertFalse(any("build" in c for c in self.commands()))
+
+    def test_rebuild_forces_local_build(self):
+        result = self.release("--rebuild-image")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any("build" in c for c in self.commands()))
+        self.assertFalse(any("pull" in c for c in self.commands()))
+
+    def test_explicit_image_fallback_and_rebuild_keep_requested_name(self):
+        self.env["ENGINE_MISSING"] = "true"
+        result = self.release("--image", "fixture-builder:debug")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        build = next(c for c in self.commands() if "build" in c)
+        self.assertIn("fixture-builder:debug", build)
+        self.assertNotIn("ghcr.io/", " ".join(sum(self.commands(), [])))
+
+    def test_cache_separates_version_and_jobs(self):
+        self.assertEqual(self.release().returncode, 0)
+        self.assertEqual(self.release("--jobs", "3").returncode, 0)
+        self.assertEqual(self.release("--version", "1").returncode, 0)
+        self.assertEqual(len(list((self.repo / ".linux-release").glob("*/src"))), 3)
+
+    def test_existing_build_lock_is_required(self):
+        import fcntl
+        work = self.repo / ".linux-release"
+        work.mkdir()
+        with (work / "lock").open("w") as stream:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = self.release()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("another Linux build", result.stderr)
+        self.assertFalse(any("run" in c for c in self.commands()))
+
+    def test_wrong_host_is_rejected_before_engine(self):
+        uname = self.bin / "uname"
+        uname.write_text('#!/bin/sh\nif [ "$1" = -s ]; then echo Linux; else echo aarch64; fi\n')
+        uname.chmod(0o755)
+        self.assertNotEqual(self.release().returncode, 0)
+        self.assertFalse(self.log.exists())
+
+    def test_wrong_image_platform_revision_or_missing_skip_image_fail(self):
+        for key, value in (("ENGINE_ARCH", "arm64"), ("ENGINE_REVISION", "0" * 40),
+                           ("ENGINE_MISSING", "true")):
+            with self.subTest(key=key):
+                self.env[key] = value
+                self.assertNotEqual(self.release("--skip-image-build").returncode, 0)
+                self.assertFalse(any("run" in c for c in self.commands()))
+                self.env.pop(key)
 
     def test_stale_cached_sources_do_not_survive_export(self):
         self.assertEqual(self.release().returncode, 0)
@@ -139,8 +226,10 @@ class InterfaceTests(unittest.TestCase):
                      ("--version", "0.12.0-test"),
                      ("--version", "0.12.0", "--jobs", "0"),
                      ("--check", "mips", "--version", "0.12.0"),
-                     ("--check", "aarch64", "--version", "0.12.0",
-                      "--game", str(self.game))):
+                     ("--check", "aarch64", "--version", "0"),
+                     ("--check", "--version", "0", "--game", str(self.game)),
+                     ("--check", "--version", "0", "--skip-image-build",
+                      "--rebuild-image")):
             with self.subTest(args=args):
                 self.assertNotEqual(self.run_script(*args).returncode, 0)
         (self.game / "exefs/sdk").unlink()
@@ -164,14 +253,10 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual(self.release().returncode, 0)
         self.assertNotIn("--user", self.run_command())
 
-    def test_rootless_podman_keeps_host_user(self):
+    def test_podman_is_not_supported(self):
         self.env["CONTAINER_ENGINE"] = "podman"
-        self.assertEqual(self.release().returncode, 0)
-        command = self.run_command()
-        self.assertIn("--remote=false", command)
-        self.assertIn("--userns=keep-id", command)
-        self.assertIn("--user", command)
-        self.assertIn("keep-groups", command)
+        self.assertNotEqual(self.release().returncode, 0)
+        self.assertFalse(self.log.exists())
 
     def test_remote_docker_is_rejected(self):
         self.env["ENGINE_ENDPOINT"] = "ssh://remote.example.invalid"
@@ -187,7 +272,7 @@ class InterfaceTests(unittest.TestCase):
 
 class ImageTests(unittest.TestCase):
     def test_ffmpeg_cross_build_selects_native_host_compiler(self):
-        for arch in ("x86_64", "aarch64"):
+        for arch in ("aarch64",):
             for compiler in ("clang", "clang-18"):
                 with self.subTest(arch=arch, compiler=compiler):
                     result = subprocess.run(
@@ -252,22 +337,25 @@ class ImageTests(unittest.TestCase):
         self.assertNotIn("--platform=linux/arm64", dockerfile)
         self.assertNotIn(" dist ", script)
         self.assertIn('make -j1 "${args[@]}" licenses pipelist', script)
-        self.assertIn('build_target x86_64\n    build_target aarch64', script)
+        self.assertNotIn("build_target x86_64", script)
+        self.assertNotIn("mhgurecomp-updater", script)
+        self.assertNotIn("if ! make", script)
+        self.assertNotIn("::warning::", script)
+        self.assertIn("test-settings-panel", script)
+        self.assertIn("org.opencontainers.image.revision", dockerfile)
 
-    def test_packager_rejects_missing_game_library_and_wrong_version(self):
+    def test_packager_rejects_missing_game_library(self):
         spec = importlib.util.spec_from_file_location(
             "dist", ROOT / "tools/dist.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as tmp:
             build = Path(tmp)
-            for name in ("mhgurecomp", "mhgurecomp-updater"):
+            for name in ("mhgurecomp",):
                 (build / name).write_bytes(
-                    b"explicit test fixture MHGURecomp-updater/0.12.0\0")
+                    b"explicit test fixture, not executable code")
             with self.assertRaises(SystemExit):
                 module.files(tmp, "linux")
-            with self.assertRaises(SystemExit):
-                module.check_version(tmp, "linux", "0.12.1")
 
 
 if __name__ == "__main__":

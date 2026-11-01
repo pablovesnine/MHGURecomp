@@ -1,31 +1,23 @@
 # MHGU Recomp build
-# Windows: MSYS2 UCRT64. Linux: clang, natively or cross-compiled (see README.md).
+# Internal Linux ARM64 build rules. Use tools/build-linux-release.sh on the host.
 #
 #   make gen GAME=<folder with exefs/ and romfs/>   recompile the game code from your own dump into generated/
-#   make -j4                                        build build/mhgurecomp(.exe) and the game code library, with its
-#                                                   DLLs and the game files (build/data): start build/mhgurecomp.exe
+#   make -j2                                        build the ARM64 runtime and available game code library
 # build/ holds only the game folder (what a player copies); the compiler's files go to obj/.
-#   make PLATFORM=android ABI=arm64-v8a|x86_64      the Android APK instead (android/android.mk): build-android/
-UNAME := $(shell uname -s)
-ifneq ($(filter MINGW% MSYS% CYGWIN% Windows_NT,$(UNAME) $(OS)),)
-PLATFORM := windows
-else
-PLATFORM := linux
+PLATFORM ?= linux
+ifneq ($(PLATFORM),linux)
+$(error Unsupported PLATFORM=$(PLATFORM); this fork builds Linux ARM64 only)
 endif
-ANDROID  := $(filter android,$(PLATFORM))
-ABI      ?= arm64-v8a
 
 GAME     ?= ../mhgu/game
 GEN      ?= generated
-B        ?= $(if $(ANDROID),build-android,build)
-O        ?= $(if $(ANDROID),obj-android/$(ABI),obj)
+B        ?= build
+O        ?= obj
 CC       := $(if $(filter default undefined,$(origin CC)),clang,$(CC))
 CXX      := $(if $(filter default undefined,$(origin CXX)),clang++,$(CXX))
 TEST_RUNNER ?=
 JOBS ?= $(shell nproc)
-ifneq ($(filter linux windows,$(PLATFORM)),)
 include tools/desktop-arch.mk
-endif
 GENFLAGS := -O1 -fno-strict-aliasing -ffp-contract=off -fno-math-errno -Wno-return-type -Wno-unused-label \
             -Wno-parentheses-equality -Wno-unused-value -fvisibility=hidden -Iruntime $(GENARCH)
 
@@ -72,8 +64,8 @@ endif
 # than GLIBC_MAX. SDL still loads X11, Wayland, libdecor, PipeWire / PulseAudio / ALSA, udev... from the system when
 # it runs, as its shared library does. Needs cmake. SDL3=system / SHADERC=system link the system's libSDL3.so.0 /
 # libshaderc_shared.so.1 instead. (Windows: always MSYS2's, their DLLs bundled.)
-SDL3          ?= $(if $(filter windows,$(PLATFORM)),system,bundled)
-SHADERC       ?= $(if $(filter windows,$(PLATFORM)),system,bundled)
+SDL3          ?= bundled
+SHADERC       ?= bundled
 SDL3_VER      := 3.4.18
 SDL3_SHA256   := 9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3
 SDL3_TAR      := third_party/sdl3/SDL3-$(SDL3_VER).tar.gz
@@ -114,23 +106,6 @@ endif
 LIB_INC    := $(if $(SDL_DEPS),-I$(SDL3_DIR)/include -DMHGU_SDL_BUNDLED) $(if $(SHADERC_DEPS),-I$(SHADERC_DIR)/include)
 LIB_STAMPS := $(if $(SDL_DEPS),$(SDL3_DIR)/.built) $(if $(SHADERC_DEPS),$(SHADERC_DIR)/.built)
 
-ifeq ($(PLATFORM),windows)
-EXE      := $(B)/mhgurecomp.exe
-OSFLAGS  := -D_FILE_OFFSET_BITS=64 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -D_CRT_RAND_S -D_POSIX_THREAD_SAFE_FUNCTIONS
-GENFLAGS += -D_FILE_OFFSET_BITS=64
-# (the GCC runtime - libstdc++, libgcc, winpthreads - linked in: three DLLs fewer to ship, and their licenses ask no
-# more than their notices then; build/licenses has those)
-LDFLAGS  := -fuse-ld=lld -Wl,--stack,16777216 $(SDL_LIBS) $(AV_LIBS) -lvulkan-1 $(SHADERC_LIBS) -lwinmm -lversion -lole32 -lshell32 -luuid -lws2_32 \
-            -lbcrypt -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic \
-            -Wl,--export-all-symbols -Wl,--out-implib,$(O)/mhgurecomp.dll.a
-GAMELIB  := $(B)/mhgugame.dll
-GAMELIB_LDFLAGS := -shared -fuse-ld=lld -static-libgcc $(O)/mhgurecomp.dll.a
-UPDATER  := $(B)/mhgurecomp-updater.exe
-# (a window program; zlib linked in, WinHTTP is Windows')
-UPD_LDFLAGS := -fuse-ld=lld -mwindows $(SDL_LIBS) -lwinhttp -Wl,-Bstatic -lz -Wl,-Bdynamic -static-libgcc
-else ifeq ($(PLATFORM),android)
-include android/android.mk
-else
 EXE      := $(B)/mhgurecomp
 OSFLAGS  :=
 GENFLAGS += -fPIC
@@ -149,11 +124,6 @@ GLIBC_WRAP_FLAGS := $(foreach f,$(GLIBC_WRAP),-Wl,--wrap=$(f))
 LDFLAGS  += $(GLIBC_WRAP_FLAGS)
 GAMELIB  := $(B)/mhgugame.so
 GAMELIB_LDFLAGS := -shared -fuse-ld=lld
-UPDATER  := $(B)/mhgurecomp-updater
-# (libcurl: opened at run time, updater/http.c; -lm for runtime/platform/linux_glibc.c: SDL_LIBS has it only with
-# the bundled SDL3)
-UPD_LDFLAGS := -fuse-ld=lld $(SDL_LIBS) -lz -ldl -lm $(GLIBC_WRAP_FLAGS)
-endif
 
 # GAMELIB_ID: what the game code library is compiled against. A library with another id is refused at startup.
 GAMELIB_SRCS := tools/gen.py tools/lifter.py tools/neon.py tools/nso.py tools/gamelib_entry.c \
@@ -164,7 +134,7 @@ GAMELIB_ID := $(shell (cat $(GAMELIB_SRCS); echo '$(GENFLAGS)') | sha256sum | cu
 SHADER_SRCS := runtime/nvn/maxwell/translate.c runtime/nvn/maxwell/shader.h
 SHADER_ID := $(shell cat $(SHADER_SRCS) | tr -d '\r' | sha256sum | cut -c1-16)
 # VERSION: this build's release (git describe: 0.10.3 on a release's tag, 0.10.3-4-gabc1234 after it), in the log and
-# the updater's (updater/updater.c: only a build of exactly a release updates itself). make dist VERSION=0.10.4 for a
+# the post-make Docker build metadata. Use tools/build-linux-release.sh for a
 # release built before its tag is made.
 VERSION ?= $(shell git describe --tags 2>/dev/null || echo unknown)
 
@@ -222,8 +192,7 @@ else
 RT_CXX   := $(O)/rt/nvn/vulkan/vma.o $(FSR_OBJ)
 endif
 
-all: $(EXE) $(if $(GEN_SRC),$(GAMELIB)) $(UPDATER) $(if $(filter windows,$(PLATFORM)),bundle) \
-     $(if $(ANDROID),apk,data licenses pipelist)
+all: $(EXE) $(if $(GEN_SRC),$(GAMELIB)) licenses pipelist
 
 # INI/settings regression test: no game dump or generated code required.
 .PHONY: test-settings
@@ -291,19 +260,12 @@ $(EXE): $(RT_OBJ) $(AV_DEPS)
 	$(CXX) $(TARGET_FLAGS) -o $@ $^ $(LDFLAGS)
 	$(GLIBC_CHECK)
 
-# The updater (updater/updater.c): started in place of the game, it installs the latest release and starts the game.
-UPD_OBJ  := $(patsubst updater/%.c,$(O)/updater/%.o,$(wildcard updater/*.c))
-# (the glibc wrappers and the newer SDL, as the game's)
-UPD_OBJ  += $(if $(filter windows,$(PLATFORM)),,$(O)/rt/platform/linux_glibc.o $(if $(SDL_DEPS),$(O)/rt/platform/linux_sdl.o))
-$(O)/updater/%.o: updater/%.c updater/updater.h updater/arch.h $(O)/version.id
+# Shared SHA256 remains required by runtime/net/ldn.c; no updater executable.
+$(O)/updater/sha256.o: updater/sha256.c updater/updater.h
 	@mkdir -p $(dir $@)
-	$(CC) $(TARGET_FLAGS) -O2 -g -Wall $(OSFLAGS) $(LIB_INC) -DMHGU_VERSION='"$(VERSION)"' -c $< -o $@
-# (SDL3 / shaderc: their headers before anything is compiled, their archives in LDFLAGS / UPD_LDFLAGS)
-$(RT_OBJ) $(UPD_OBJ): $(LIB_STAMPS)
-$(UPDATER): $(UPD_OBJ)
-	@mkdir -p $(dir $@)
-	$(CC) $(TARGET_FLAGS) -o $@ $^ $(UPD_LDFLAGS)
-	$(GLIBC_CHECK)
+	$(CC) $(TARGET_FLAGS) -O2 -g -Wall -c $< -o $@
+# SDL3 / shaderc headers must exist before the runtime is compiled.
+$(RT_OBJ): $(LIB_STAMPS)
 
 # (Linux: a program starts with glibc GLIBC_MAX and libstdc++ GLIBCXX_MAX or later, see LDFLAGS; this checks the one
 # just linked. GLIBCXX_MAX: GCC 13's, the oldest of those distributions.)
@@ -409,7 +371,7 @@ $(B)/licenses/FFmpeg.txt: $(FFMPEG_DIR)/.built
 
 $(B)/licenses/SDL3.txt: $(SDL3_DIR)/.built
 	@mkdir -p $(dir $@)
-	@{ echo "This program contains SDL $(SDL3_VER), $(if $(ANDROID),as libSDL3.so,linked statically), under the zlib license (below). Its source code is"; \
+	@{ echo "This program contains SDL $(SDL3_VER), linked statically, under the zlib license (below). Its source code is"; \
 	   echo "https://github.com/libsdl-org/SDL/releases/download/release-$(SDL3_VER)/SDL3-$(SDL3_VER).tar.gz."; \
 	   echo; cat $(SDL3_DIR)/src/LICENSE.txt; } > $@
 $(B)/licenses/shaderc.txt: $(SHADERC_DIR)/.built
@@ -428,19 +390,7 @@ $(GAMELIB): $(GEN_OBJ) | $(EXE)
 
 PY := $(firstword $(wildcard tools/venv/Scripts/python.exe) $(wildcard tools/venv/bin/python) python3)
 
-# The build folder is the game folder: mhgurecomp.exe starts from it on its own (runtime/main.c), with
-# - bundle (Windows): the MSYS2 DLLs it needs beside it (tools/bundle_dlls.py; not the GPU driver's vulkan-1.dll)
-# - data: the game files from $(GAME) in $(B)/data/exefs and $(B)/data/romfs, once (hard links where the file system
-#   allows them - no second copy on disk, and deleting them leaves $(GAME) alone - else copies).
-# Nothing else: a player copies it as a whole into their game folder (or over it: their settings, caches, mods/ and
-# log.txt are written only when the game runs). run-game.bat runs it with those in run/ (MHGU_HOME), not here.
-# (--with: MSYS2 packages linked into the executable or into a bundled DLL, whose licenses go along too: the static
-# GCC runtime, VulkanMemoryAllocator, and glslang / SPIRV-Tools inside shaderc's DLL)
-LICENSE_PKGS := libstdc++ libgcc libwinpthread vulkan-memory-allocator glslang spirv-tools zlib
-bundle: $(EXE) $(if $(GEN_SRC),$(GAMELIB)) $(UPDATER)
-	@$(PY) tools/bundle_dlls.py "$$(cygpath -m "$$(dirname "$$(command -v $(CC))")")" $(B) $^ \
-	    --licenses $(B)/licenses --with $(LICENSE_PKGS)
-
+# Explicit convenience target only; Docker never copies the dump into the build.
 data: $(B)/data/.complete
 $(B)/data/.complete:
 	@if [ ! -f "$(GAME)/exefs/main" ] || [ ! -d "$(GAME)/romfs" ]; then \
@@ -466,31 +416,17 @@ test-lift:
 runtime-objs: $(RT_OBJ)
 
 clean:  # (keeps $(B)/data, and the settings, caches and saves wherever the game ran)
-	rm -rf $(O) $(B)/*.dll $(B)/*.so $(EXE) $(UPDATER) $(B)/vkprobe.exe
+	rm -rf $(O) $(B)/*.so $(EXE) $(B)/build-metadata.json
 
-# make dist VERSION=0.10.4: the release archive of the build folder, for GitHub (tools/dist.py): in $(DIST)/,
-# Windows-MHGURecomp.<version>.zip or Linux[ARM64]-MHGURecomp.<version>.tar.gz (permissions kept), holding the programs,
-# the game code, the DLLs, licenses/, BONUS (the donor save for bonus/system, when given) and the empty folders the
-# player fills; never the game files, mods, settings or caches of $(B). It prints each archive's size and SHA-256.
-# On Windows, with the Android SDK installed (android/android.mk), it then makes the Android one too (android/apk.mk):
-# Android-MHGURecomp.<version>.apk, arm64 only, signed with the release key. ANDROID_DIST= leaves it out.
+# Internal packaging of an already attested Docker build, never private data.
 DIST  ?= dist
-BONUS ?= $(wildcard $(B)/bonus/system)
-ANDROID_DIST ?= $(if $(filter windows,$(PLATFORM)),$(wildcard $(if $(ANDROID_HOME),$(shell cygpath -u '$(ANDROID_HOME)'),/c/Android/Sdk)/ndk/*))
 CHECK_VERSION = @echo '$(VERSION)' | grep -Eq '^[0-9]+(\.[0-9]+)*$$' || \
 	{ echo "dist: '$(VERSION)' is not a release version: make dist VERSION=<the release's tag, e.g. 0.10.4>"; exit 1; }
-ifndef ANDROID
-dist: all
+dist:
 	$(CHECK_VERSION)
-	$(PY) tools/dist.py $(B) $(DIST) $(PLATFORM) $(VERSION) --arch $(TARGET_ARCH) $(if $(BONUS),--bonus "$(BONUS)")
-	$(if $(ANDROID_DIST),$(MAKE) PLATFORM=android ABI=arm64-v8a dist $(if $(BONUS),BONUS="$(abspath $(BONUS))"),@echo "dist: no Android SDK: no APK")
-endif
+	$(PY) tools/dist.py "$(B)" "$(DIST)" linux "$(VERSION)" --revision "$(SOURCE_REVISION)" --image "$(BUILDER_IMAGE)"
 
-.PHONY: all gen test-lift runtime-objs clean bundle data licenses pipelist dist FORCE
-
-ifeq ($(PLATFORM),android)
-include android/apk.mk
-endif
+.PHONY: all gen test-lift runtime-objs clean data licenses pipelist dist FORCE
 
 # Exercise real ImGui navigation without a game dump or graphics device.
 .PHONY: test-settings-panel

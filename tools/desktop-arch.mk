@@ -1,14 +1,11 @@
-# Desktop targets only. Android selects its compiler and CPU through the NDK and ABI.
+# This fork's only build target is Linux AArch64.
 HOST_ARCH := $(shell uname -m)
-TARGET_ARCH ?= $(HOST_ARCH)
+TARGET_ARCH ?= aarch64
 normalize_arch = $(if $(filter arm64 aarch64,$(1)),aarch64,$(if $(filter amd64 x86_64,$(1)),x86_64,$(1)))
 override TARGET_ARCH := $(call normalize_arch,$(TARGET_ARCH))
 HOST_ARCH := $(call normalize_arch,$(HOST_ARCH))
-ifeq ($(filter x86_64 aarch64,$(TARGET_ARCH)),)
-$(error Unsupported TARGET_ARCH=$(TARGET_ARCH))
-endif
-ifeq ($(PLATFORM)-$(TARGET_ARCH),windows-aarch64)
-$(error ARM64 is supported on Linux only)
+ifneq ($(PLATFORM)-$(TARGET_ARCH),linux-aarch64)
+$(error Unsupported target $(PLATFORM)/$(TARGET_ARCH); this fork builds Linux ARM64 only)
 endif
 SYSROOT ?=
 TARGET_FLAGS :=
@@ -34,5 +31,5 @@ export PKG_CONFIG_LIBDIR := $(SYSROOT)/usr/lib/aarch64-linux-gnu/pkgconfig:$(SYS
 unexport PKG_CONFIG_PATH
 endif
 endif
-OBJDUMP ?= $(if $(filter aarch64,$(TARGET_ARCH)),llvm-objdump,objdump)
-GENARCH  ?= $(if $(filter aarch64,$(TARGET_ARCH)),-march=armv8-a,-march=x86-64-v3)  # generic release CPUs
+OBJDUMP ?= llvm-objdump
+GENARCH  ?= -march=armv8-a

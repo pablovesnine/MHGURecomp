@@ -1,5 +1,7 @@
-"""Build/release regression tests using public code and explicit header fixtures."""
-import itertools
+"""ARM64-only build regressions; ELF headers are explicit test fixtures."""
+import importlib.util
+import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -7,36 +9,27 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+REVISION = "1" * 40
+IMAGE = "sha256:" + "2" * 64
 
 
 def probe(*args):
     names = ("TARGET_ARCH", "TARGET_FLAGS", "CMAKE_TARGET_FLAGS",
              "FFMPEG_TARGET_FLAGS", "GENARCH", "GAMELIB_ID", "B", "O",
              "CC", "CXX", "PKG_CONFIG_LIBDIR", "PKG_CONFIG_SYSROOT_DIR",
-             "UPD_LDFLAGS", "FFMPEG_CC", "ABI", "TRIPLE", "UPDATER",
-             "GLIBC_WRAP_FLAGS", "RT_SRC", "MAKEFILE_LIST", "FFMPEG_CONF")
+             "FFMPEG_CC", "RT_SRC")
     recipe = "probe:\n\t@printf '%s\\n' " + " ".join(
-        f"'{name}=$({name})'" for name in names)
-    recipe += " 'GLIBC_CHECK_ENABLED=$(if $(value GLIBC_CHECK),yes,no)'\n"
-    with tempfile.TemporaryDirectory(prefix="mhgu-config-") as tmp:
-        fixture_args = []
-        if "PLATFORM=android" in args:
-            # Empty directories only. No SDK tools or compilation run here.
-            sdk = Path(tmp) / "configuration-fixture-not-sdk"
-            ndk = sdk / "ndk" / "fixture"
-            (ndk / "toolchains/llvm/prebuilt/test-host/bin").mkdir(parents=True)
-            (sdk / "cmake/fixture/bin").mkdir(parents=True)
-            fixture_args = [f"ANDROID_SDK={sdk}", f"NDK={ndk}"]
-        return subprocess.run(["make", "-s", "-f", "Makefile", "-f", "-",
-                               "probe", *args, *fixture_args],
-                              input=recipe, cwd=ROOT,
-                              capture_output=True, text=True)
+        f"'{name}=$({name})'" for name in names) + "\n"
+    return subprocess.run(["make", "-s", "-f", "Makefile", "-f", "-",
+                           "probe", *args], input=recipe, cwd=ROOT,
+                          capture_output=True, text=True)
 
 
-def elf_header(machine):
-    # Deliberate header-only fixtures, not executable files or game contents.
+def elf_header(machine=183):
+    # Deliberate header-only fixture, not executable code or game contents.
     header = bytearray(64)
     header[:7] = b"\x7fELF\x02\x01\x01"
     header[16] = 3
@@ -46,172 +39,213 @@ def elf_header(machine):
     return header
 
 
+def load_dist():
+    spec = importlib.util.spec_from_file_location("dist", ROOT / "tools/dist.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class BuildTests(unittest.TestCase):
-    def test_defaults_and_aliases(self):
-        for alias, expected in (("arm64", "aarch64"), ("aarch64", "aarch64"),
-                                ("amd64", "x86_64"), ("x86_64", "x86_64")):
-            result = probe(f"TARGET_ARCH={alias}")
+    def test_defaults_and_arm64_alias(self):
+        for args in ((), ("TARGET_ARCH=arm64",), ("TARGET_ARCH=aarch64",)):
+            result = probe(*args)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn(f"TARGET_ARCH={expected}\n", result.stdout)
+            self.assertIn("TARGET_ARCH=aarch64\n", result.stdout)
             self.assertIn("B=build\nO=obj\n", result.stdout)
-        result = probe("B=my-build", "O=my-objects")
-        self.assertIn("B=my-build\nO=my-objects\n", result.stdout)
+        self.assertIn("B=my-build\nO=my-objects\n",
+                      probe("B=my-build", "O=my-objects").stdout)
 
     def test_cross_flags_and_identity(self):
         ids = []
         for root in ("/tmp/sysroot-one", "/tmp/sysroot-two"):
-            result = probe("HOST_ARCH=x86_64", "TARGET_ARCH=aarch64",
-                           f"SYSROOT={root}")
+            result = probe("HOST_ARCH=x86_64", f"SYSROOT={root}")
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("--target=aarch64-linux-gnu", result.stdout)
-            self.assertIn(f"--sysroot={root}", result.stdout)
-            self.assertIn("CMAKE_SYSTEM_PROCESSOR=aarch64", result.stdout)
-            self.assertIn("--arch=aarch64", result.stdout)
-            self.assertIn("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld", result.stdout)
-            self.assertIn("--extra-ldflags=-fuse-ld=lld", result.stdout)
-            self.assertIn(f"PKG_CONFIG_SYSROOT_DIR={root}\n", result.stdout)
+            for text in ("--target=aarch64-linux-gnu", f"--sysroot={root}",
+                         "CMAKE_SYSTEM_PROCESSOR=aarch64", "--arch=aarch64",
+                         "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld",
+                         "--extra-ldflags=-fuse-ld=lld",
+                         f"PKG_CONFIG_SYSROOT_DIR={root}\n"):
+                self.assertIn(text, result.stdout)
             self.assertNotIn("x86-64-v3", result.stdout)
             ids.append(next(x for x in result.stdout.splitlines()
                             if x.startswith("GAMELIB_ID=")))
         self.assertEqual(*ids)
-        self.assertNotIn(ids[0], probe("TARGET_ARCH=x86_64").stdout)
-        self.assertIn("TARGET_FLAGS=\n", probe("TARGET_ARCH=x86_64").stdout)
-        self.assertIn("TARGET_FLAGS=\n", probe("PLATFORM=windows",
-                                             "TARGET_ARCH=x86_64").stdout)
-
-    def test_native_arm_and_compilers(self):
-        result = probe("HOST_ARCH=aarch64", "TARGET_ARCH=aarch64")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("CMAKE_TARGET_FLAGS=\nFFMPEG_TARGET_FLAGS=\n", result.stdout)
-        self.assertNotIn("--sysroot=", result.stdout)
-        self.assertIn("CC=clang\nCXX=clang++\n", result.stdout)
-        result = probe("CC=my-clang", "CXX=my-clang++")
-        self.assertIn("CC=my-clang\nCXX=my-clang++\n", result.stdout)
 
     def test_unsupported_targets(self):
-        self.assertNotEqual(probe("TARGET_ARCH=mips").returncode, 0)
-        self.assertNotEqual(probe("PLATFORM=windows",
-                                 "TARGET_ARCH=aarch64").returncode, 0)
+        for args in (("TARGET_ARCH=mips",), ("TARGET_ARCH=x86_64",),
+                     ("TARGET_ARCH=amd64",), ("PLATFORM=windows",),
+                     ("PLATFORM=android",), ("PLATFORM=darwin",)):
+            with self.subTest(args=args):
+                self.assertNotEqual(probe(*args).returncode, 0)
 
-    def test_android_configuration_does_not_inherit_desktop_flags(self):
-        # This probes shared variables, not an Android build or an SDK.
-        for host in ("x86_64", "aarch64"):
-            for abi in ("arm64-v8a", "x86_64"):
-                with self.subTest(host=host, abi=abi):
-                    result = probe("PLATFORM=android", f"HOST_ARCH={host}",
-                                   f"ABI={abi}", "SYSROOT=/desktop/sysroot")
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    for name in ("TARGET_FLAGS", "CMAKE_TARGET_FLAGS",
-                                 "FFMPEG_TARGET_FLAGS", "GENARCH",
-                                 "PKG_CONFIG_LIBDIR", "PKG_CONFIG_SYSROOT_DIR"):
-                        self.assertIn(f"{name}=\n", result.stdout)
-                    self.assertNotIn("--target=aarch64-linux-gnu", result.stdout)
-                    self.assertNotIn("/desktop/sysroot", result.stdout)
-                    values = dict(line.split("=", 1)
-                                  for line in result.stdout.splitlines())
-                    arch = "aarch64" if abi == "arm64-v8a" else "x86_64"
-                    triple = f"{arch}-linux-android29"
-                    self.assertIn("android/android.mk",
-                                  values["MAKEFILE_LIST"].split())
-                    self.assertNotIn("tools/desktop-arch.mk",
-                                     values["MAKEFILE_LIST"].split())
-                    self.assertEqual(values["ABI"], abi)
-                    self.assertEqual(values["TRIPLE"], triple)
-                    self.assertEqual(values["CC"], values["FFMPEG_CC"] +
-                                     f" --target={triple} -fPIC")
-                    self.assertEqual(values["CXX"], values["FFMPEG_CC"] +
-                                     f"++ --target={triple} -fPIC")
-                    self.assertEqual(values["B"], "build-android")
-                    self.assertEqual(values["O"], f"obj-android/{abi}")
-                    self.assertEqual(values["UPDATER"], "")
-                    self.assertEqual(values["GLIBC_WRAP_FLAGS"], "")
-                    self.assertNotIn("linux_glibc.c", values["RT_SRC"])
-                    flags = shlex.split(values["FFMPEG_CONF"])
-                    self.assertIn("--host-cc=clang", flags)
-                    self.assertIn("--target-os=android", flags)
-                    self.assertIn(f"--arch={arch}", flags)
-                    self.assertIn(f"--extra-cflags=--target={triple}", flags)
-
-    def test_glibc_check_is_linux_only(self):
-        for platform in ("linux", "windows", "android"):
-            with self.subTest(platform=platform):
-                result = probe(f"PLATFORM={platform}", "TARGET_ARCH=x86_64")
-                self.assertEqual(result.returncode, 0, result.stderr)
-                expected = "yes" if platform == "linux" else "no"
-                self.assertIn(f"GLIBC_CHECK_ENABLED={expected}\n", result.stdout)
-
-    def test_ffmpeg_compiler_interface_preserves_target_flags(self):
-        result = probe("HOST_ARCH=x86_64", "TARGET_ARCH=aarch64",
-                       "SYSROOT=/desktop/sysroot", "CC=my-clang")
+    def test_ffmpeg_native_host_compiler_and_target_flags(self):
+        result = probe("HOST_ARCH=x86_64", "SYSROOT=/desktop/sysroot",
+                       "CC=my-clang", "CXX=my-clang++")
         self.assertEqual(result.returncode, 0, result.stderr)
-        compiler = next(line for line in result.stdout.splitlines()
-                        if line.startswith("FFMPEG_CC="))
-        self.assertIn("FFMPEG_CC=my-clang --target=aarch64-linux-gnu", compiler)
-        self.assertIn("--sysroot=/desktop/sysroot", compiler)
-        result = probe("FFMPEG_CC=explicit-ffmpeg-cc")
-        self.assertIn("FFMPEG_CC=explicit-ffmpeg-cc\n", result.stdout)
+        self.assertIn("--host-cc=my-clang", shlex.split(result.stdout))
+        self.assertIn("FFMPEG_CC=my-clang --target=aarch64-linux-gnu",
+                      result.stdout)
+        self.assertIn("--sysroot=/desktop/sysroot", result.stdout)
+        self.assertIn("CXX=my-clang++", result.stdout)
+        self.assertIn("FFMPEG_CC=explicit-ffmpeg-cc\n",
+                      probe("FFMPEG_CC=explicit-ffmpeg-cc").stdout)
 
-    def test_updater_system_sdl_keeps_libm(self):
-        # SDL3=system does not add -lm through SDL_LIBS; the updater must.
-        for arch in ("x86_64", "aarch64"):
-            result = probe("PLATFORM=linux", f"TARGET_ARCH={arch}",
-                           "SDL3=system")
-            self.assertEqual(result.returncode, 0, result.stderr)
-            flags = next(line.removeprefix("UPD_LDFLAGS=")
-                         for line in result.stdout.splitlines()
-                         if line.startswith("UPD_LDFLAGS=")).split()
-            self.assertIn("-lSDL3", flags)
-            self.assertIn("-lm", flags)
-            self.assertIn("-Wl,--wrap=sqrtf", flags)
+    def test_updater_not_built_but_runtime_sha256_remains(self):
+        text = (ROOT / "Makefile").read_text()
+        self.assertIn("$(O)/updater/sha256.o", text)
+        self.assertNotIn("$(UPDATER)", text)
+        self.assertTrue((ROOT / "updater/sha256.c").is_file())
+        self.assertTrue((ROOT / "updater/updater.h").is_file())
+        self.assertTrue((ROOT / "runtime/platform/win_compat.h").is_file())
 
-    def test_updater_headers(self):
+    def test_updater_arch_headers_retained_for_merge_compatibility(self):
+        # Host-native header unit tests, not supported build targets.
         for machine, flags in ((62, []), (183, []), (62, ["-D_WIN32"])):
             with tempfile.TemporaryDirectory() as tmp:
                 exe = str(Path(tmp) / "test")
                 subprocess.run(["clang", "-std=c11", "-Wall", "-Wextra",
                                 "-Werror", f"-DMHGU_TARGET_MACHINE={machine}",
                                 *flags, "-I.", "tests/test_update_arch.c",
-                                "-o", exe],
-                               cwd=ROOT, check=True)
+                                "-o", exe], cwd=ROOT, check=True)
                 subprocess.run([exe], check=True)
-        # The new name must also be safe for *old* deployed updaters.
-        assets = ["Linux-MHGURecomp.1.2.3.tar.gz",
-                  "LinuxARM64-MHGURecomp.1.2.3.tar.gz",
-                  "Windows-MHGURecomp.1.2.3.zip"]
-        for order in itertools.permutations(assets):
-            chosen = [x for x in order if x.startswith(("Linux-", "ArchLinux-"))]
-            self.assertEqual(chosen, [assets[0]])
 
-    def test_dist_architecture_and_legacy_invocation(self):
-        for arch, machine, top in (
-            ("aarch64", 183, "LinuxARM64-MHGURecomp"),
-            (None, 62, "Linux-MHGURecomp"),
-        ):
-            with tempfile.TemporaryDirectory() as tmp:
-                build = Path(tmp) / "build"
-                build.mkdir()
-                (build / "licenses").mkdir()
-                (build / "licenses/LICENSE.txt").write_text("test fixture")
-                (build / "pipelines.list").write_text("test fixture")
-                for name in ("mhgurecomp", "mhgugame.so", "mhgurecomp-updater"):
-                    content = elf_header(machine)
-                    if name.endswith("updater"):
-                        content += b"MHGURecomp-updater/1.2.3\0"
-                    (build / name).write_bytes(content)
-                cmd = [sys.executable, str(ROOT / "tools/dist.py"),
-                       str(build), tmp, "linux", "1.2.3"]
-                if arch:
-                    cmd += ["--arch", arch]
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                archive = Path(tmp) / f"{top}.1.2.3.tar.gz"
-                with tarfile.open(archive) as tar:
-                    self.assertEqual(tar.getmember(f"{top}/mhgurecomp").mode, 0o755)
-                    self.assertNotIn(f"{top}/data/exefs/main", tar.getnames())
-                (build / "mhgugame.so").write_bytes(elf_header(183 if machine == 62 else 62))
-                self.assertNotEqual(subprocess.run(cmd, capture_output=True).returncode, 0)
-                (build / "mhgugame.so").write_bytes(elf_header(machine)[:20])
-                self.assertNotEqual(subprocess.run(cmd, capture_output=True).returncode, 0)
+
+class PackageTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.build = self.root / "build"
+        self.build.mkdir()
+        (self.build / "licenses").mkdir()
+        for name in ("LICENSE", "THIRD_PARTY_NOTICES", "FFmpeg", "SDL3", "shaderc"):
+            (self.build / "licenses" / (name + ".txt")).write_text("license fixture")
+        (self.build / "pipelines.list").write_text("pipeline fixture")
+        for name in ("mhgurecomp", "mhgugame.so"):
+            (self.build / name).write_bytes(elf_header())
+        # ObjDump is deliberately mocked for the header-only fixtures.
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        objdump = self.bin / "llvm-objdump"
+        objdump.write_text(
+            "#!/bin/sh\nprintf '%s\\n' \"${FIXTURE_SYMBOLS:-"
+            "0000000000000000      DF *UND* 0000000000000000 "
+            "(GLIBC_2.39) fixture_import}\"\n")
+        objdump.chmod(0o755)
+        self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"])
+        self.module = load_dist()
+        self.record()
+
+    def record(self):
+        self.module.record_metadata(self.build, "1.2.3", REVISION, IMAGE,
+                                    {"compiler": "explicit fixture compiler"})
+
+    def command(self, *args):
+        return subprocess.run([sys.executable, str(ROOT / "tools/dist.py"),
+                               str(self.build), str(self.root / "out"),
+                               "linux", "1.2.3", "--revision", REVISION,
+                               "--image", IMAGE, *args],
+                              env=self.env, capture_output=True, text=True)
+
+    def test_only_arm64_package_and_no_private_files_or_updater(self):
+        for name in ("mhgurecomp-updater", "settings.ini", "log.txt"):
+            (self.build / name).write_text("must not ship")
+        (self.build / "data/exefs").mkdir(parents=True)
+        (self.build / "data/exefs/main").write_text("private fixture")
+        result = self.command()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        archive = self.root / "out/LinuxARM64-MHGURecomp.1.2.3.tar.gz"
+        with tarfile.open(archive) as tar:
+            top = "LinuxARM64-MHGURecomp/"
+            self.assertEqual(tar.getmember(top + "mhgurecomp").mode, 0o755)
+            self.assertEqual(tar.getmember(top + "build-metadata.json").mode, 0o644)
+            self.assertTrue(tar.getmember(top + "licenses/THIRD_PARTY_NOTICES.txt"))
+            for private in ("mhgurecomp-updater", "data/exefs/main",
+                            "settings.ini", "log.txt"):
+                self.assertNotIn(top + private, tar.getnames())
+        self.assertNotIn("upload", result.stdout.lower())
+
+    def test_missing_or_stale_metadata_is_rejected(self):
+        path = self.build / "build-metadata.json"
+        original = json.loads(path.read_text())
+        for key, value in (("version", "9"), ("source_revision", "3" * 40),
+                           ("builder_image", "sha256:" + "4" * 64),
+                           ("architecture", "x86_64"), ("schema", 99)):
+            path.write_text(json.dumps(dict(original, **{key: value})))
+            self.assertNotEqual(self.command().returncode, 0, key)
+        path.unlink()
+        self.assertNotEqual(self.command().returncode, 0)
+
+    def test_metadata_cannot_be_reused_for_modified_programs(self):
+        for name in ("mhgurecomp", "mhgugame.so"):
+            (self.build / name).write_bytes(elf_header() + b"modified fixture")
+            self.assertNotEqual(self.command().returncode, 0, name)
+            (self.build / name).write_bytes(elf_header())
+        (self.build / "mhgugame.so").unlink()
+        self.assertNotEqual(self.command().returncode, 0)
+
+    def test_wrong_elf_and_abi_are_rejected_even_with_current_metadata(self):
+        for content in (elf_header(62), elf_header()[:20]):
+            (self.build / "mhgugame.so").write_bytes(content)
+            self.record()
+            self.assertNotEqual(self.command().returncode, 0)
+        (self.build / "mhgugame.so").write_bytes(elf_header())
+        self.record()
+        for version in ("GLIBC_2.40", "GLIBCXX_3.4.33"):
+            self.env["FIXTURE_SYMBOLS"] = (
+                f"0000000000000000 DF *UND* 0000000000000000 "
+                f"({version}) fixture_import")
+            self.assertNotEqual(self.command().returncode, 0)
+
+    def test_exported_versions_do_not_raise_import_ceiling(self):
+        self.env["FIXTURE_SYMBOLS"] = (
+            "0000000000001000 g DF .text 0000000000000010 "
+            "GLIBC_2.40 fixture_export\n"
+            "0000000000000000 DF *UND* 0000000000000000 "
+            "(GLIBC_2.39) fixture_import")
+        result = self.command()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_unsupported_cli_and_metadata_provenance(self):
+        for args in (("--arch", "x86_64"), ("--arch", "mips"),
+                     ("--bonus", "private-save"), ("--arch",)):
+            self.assertNotEqual(self.command(*args).returncode, 0)
+        for revision, image in (("latest", IMAGE), (REVISION, "builder:latest")):
+            with self.assertRaises(ValueError):
+                self.module.record_metadata(self.build, "1.2.3", revision,
+                                            image, {"compiler": "fixture"})
+
+    def test_metadata_write_is_atomic(self):
+        old = (self.build / "build-metadata.json").read_bytes()
+        with patch.object(self.module.os, "replace", side_effect=OSError("fixture")):
+            with self.assertRaises(OSError):
+                self.record()
+        self.assertEqual((self.build / "build-metadata.json").read_bytes(), old)
+        self.assertEqual(list(self.build.glob("*.part")), [])
+
+    def test_missing_licenses_and_unsupported_platform_are_rejected(self):
+        (self.build / "licenses/THIRD_PARTY_NOTICES.txt").unlink()
+        self.assertNotEqual(self.command().returncode, 0)
+        result = subprocess.run([sys.executable, str(ROOT / "tools/dist.py"),
+                                 str(self.build), str(self.root), "windows", "1.2.3",
+                                 "--revision", REVISION, "--image", IMAGE],
+                                env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_existing_archive_and_predictable_part_symlink_are_safe(self):
+        out = self.root / "out"
+        out.mkdir()
+        name = "LinuxARM64-MHGURecomp.1.2.3.tar.gz"
+        victim = self.root / "unrelated.txt"
+        victim.write_text("do not change")
+        (out / (name + ".part")).symlink_to(victim)
+        self.assertEqual(self.command().returncode, 0)
+        self.assertEqual(victim.read_text(), "do not change")
+        old = (out / name).read_bytes()
+        (self.build / "mhgugame.so").write_bytes(b"invalid fixture")
+        self.assertNotEqual(self.command().returncode, 0)
+        self.assertEqual((out / name).read_bytes(), old)
 
 
 if __name__ == "__main__":

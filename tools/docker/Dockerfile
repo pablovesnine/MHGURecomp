@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 FROM ubuntu:24.04@sha256:78d4744ead1f5b19b04d0df558ab182a5300903900755e515b2ca4d10eb2044d
 
-LABEL org.opencontainers.image.title="MHGURecomp Linux builder"
+LABEL org.opencontainers.image.title="MHGURecomp Linux ARM64 builder" \
+      org.opencontainers.image.source="https://github.com/pablovesnine/MHGURecomp"
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -44,6 +45,11 @@ RUN bash /opt/mhgu/docker/prepare-sysroot.sh \
        > /opt/mhgu/host-packages.tsv
 
 COPY docker/build.sh docker/check-elf.py /opt/mhgu/docker/
+# Keep the revision stamp after expensive tools layers so those cache across SHAs.
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.revision="${SOURCE_REVISION}"
+RUN printf '%s' "$SOURCE_REVISION" | grep -Eq '^[0-9a-f]{40}$' \
+    && printf '%s\n' "$SOURCE_REVISION" > /opt/mhgu/source-revision
 ENV PATH="/opt/mhgu/venv/bin:${PATH}" HOME=/tmp
 WORKDIR /work/src
 ENTRYPOINT ["bash", "/opt/mhgu/docker/build.sh"]
