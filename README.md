@@ -66,10 +66,6 @@ Extract into a new directory on your ARM64 Linux device. Copy your dump's
 `exefs/` and `romfs/` into its `data/` directory, then run `./mhgurecomp`.
 Back up saves before testing an update.
 
-Keep dumps, generated sources, caches and personal build folders out of Git.
-Release uploads must not include original game files. The license below
-does not grant redistribution rights to game-derived code.
-
 ## Maintenance
 
 Upstream is checked every six hours. Compatible changes enter `master`
