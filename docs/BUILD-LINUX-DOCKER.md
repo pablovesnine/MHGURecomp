@@ -1,9 +1,9 @@
 # Build both Linux packages
 
-Use one x86-64 Docker container to build the Linux x86-64 and ARM64 packages.
-The compiler runs on x86-64 for both targets.
-QEMU runs small ARM64 checks, not the compiler.
-These packages target Linux with glibc, not Android.
+You can build both Linux packages on an x86-64 Linux PC using the same Docker
+image. The compiler runs on your PC for both targets, cross-compiling when you
+select ARM64; QEMU is only used to run small ARM64 checks. Both packages target
+Linux with glibc, so these instructions do not apply to Android.
 
 ## Requirements
 
@@ -13,31 +13,31 @@ These packages target Linux with glibc, not Android.
 - Your own complete MHGU 1.4.0 dump.
 - Internet access for the first build.
 
-Install Docker with its [official installation guide](https://docs.docker.com/engine/install/).
-Use the [Linux post-installation guide](https://docs.docker.com/engine/install/linux-postinstall/)
-or [rootless mode](https://docs.docker.com/engine/security/rootless/) for access without `sudo`.
-The `docker` group grants root-level privileges.
-Do not run the build command with `sudo`.
+Follow Docker's [installation guide](https://docs.docker.com/engine/install/),
+then configure access without `sudo` using either the
+[Linux post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/)
+or [rootless mode](https://docs.docker.com/engine/security/rootless/). Be aware
+that membership in the `docker` group grants root-level privileges. Once Docker
+is set up, run the build as your normal user rather than adding `sudo`.
 
-Allow 20 GB of free space, excluding your dump, and 8 GB of RAM.
-These are planning margins, not measured minimum requirements.
-Start with two jobs.
-The clean build time has not been measured.
+As a starting point, allow 20 GB of free space in addition to your dump and
+8 GB of RAM, and use two build jobs. These are planning margins, not measured
+minimum requirements; a clean build time has not been established.
 
-The image uses Ubuntu 24.04, Clang 18, and GCC 13 target runtimes.
-It includes an external ARM64 sysroot from signed Ubuntu packages.
-It does not execute ARM64 package installers.
-The Makefile builds its pinned SDL3, shaderc, and FFmpeg sources.
-The existing glibc 2.39 and GLIBCXX_3.4.32 ceilings apply.
+The image provides Ubuntu 24.04, Clang 18, GCC 13 target runtimes, and an ARM64
+sysroot extracted from signed Ubuntu packages without running their ARM64
+installers. The Makefile builds its pinned SDL3, shaderc, and FFmpeg sources
+against that environment, keeping the existing glibc 2.39 and GLIBCXX_3.4.32
+release ceilings.
 
 ## Use the published tools image
 
-This is the recommended path when a public image is available.
-GitHub Actions checks public code and publishes the tools image to GHCR.
-It does not publish playable packages in Actions artifacts.
-You compile your own game library locally.
-You do not need a fork, a GitHub token, or your own Actions run.
-Public GHCR images permit anonymous downloads.
+If a public image is available, downloading it is the easiest way to get
+started. GitHub Actions checks the public code and publishes a tools image
+to GHCR, not a playable game package or an Actions artifact containing one.
+You then use that image to compile your own game library locally. A public
+image can be downloaded anonymously, so you do not need a fork, a GitHub token,
+or an Actions run of your own.
 
 1. Check access to the local Docker server without `sudo`:
 
@@ -47,10 +47,9 @@ Public GHCR images permit anonymous downloads.
 
 2. Open the repository's **Actions** tab.
 3. Select **Linux builder**.
-4. Select a successful run on `master` or `linux-arm64-0118`.
-   Use a repository and branch you trust.
-   Do not select a PR run.
-5. Make sure both architecture jobs and **Publish the tools image** passed.
+4. Choose a successful run on `master` or `linux-arm64-0118` in a repository
+   and branch you trust. Do not choose a PR run, since those do not publish images.
+5. Check that both architecture jobs and **Publish the tools image** passed.
 6. Copy the full source commit SHA from that run.
 7. Clone the same repository and select that commit:
 
@@ -64,10 +63,10 @@ Public GHCR images permit anonymous downloads.
    IMAGE="ghcr.io/${OWNER,,}/mhgurecomp-builder:$REVISION"
    ```
 
-   For a fork, replace `morerokk/MHGURecomp` before you run the commands.
-   The image owner must match the repository owner.
-   A fork's publication does not create an upstream image.
-   Upstream needs its own successful publication after merge.
+   If you are using a fork, replace `morerokk/MHGURecomp` before running this
+   block. The image owner must match the source repository owner: publishing
+   from a fork does not create an upstream image. Upstream needs a successful
+   publication of its own after the PR is merged.
 
 8. Download the image for that same SHA:
 
@@ -79,11 +78,13 @@ Public GHCR images permit anonymous downloads.
 
    ```bash
    bash tools/build-linux-release.sh --game "/absolute/path/to/data" \
-     --version 0.12.0 --jobs 2 --image "$IMAGE" --skip-image-build
+     --version 0.13.0 --jobs 2 --image "$IMAGE" --skip-image-build
    ```
 
-   The dump folder must contain `exefs/main`, `exefs/sdk`, and `romfs/`.
-   The script generates the game C once and builds each target separately.
+   Point `--game` to a folder containing `exefs/main`, `exefs/sdk`, and
+   `romfs/`. The script generates the game C once, then builds each target
+   separately. The version here is the package version; change it if you
+   deliberately build a different release.
 
 10. Check the package hashes:
 
@@ -91,57 +92,56 @@ Public GHCR images permit anonymous downloads.
    (cd dist && sha256sum -c SHA256SUMS)
    ```
 
-**Use a published SHA, not an arbitrary checkout SHA.**
-The workflow's path filters exclude documentation-only changes.
-Those pushes do not create an image tag.
-The moving `linux-amd64` tag is not a fixed source revision.
-Use the full-SHA tag for the matching source and builder.
+**Use the full SHA of a run that published an image, not just the latest
+checkout SHA.** Documentation-only pushes do not trigger this workflow, so
+they do not create image tags. The moving `linux-amd64` tag is useful as a
+convenience tag, but it does not identify a fixed source revision; use the
+full-SHA tag to select the matching source and builder.
 
-If no public image exists, use the local builder option below.
-Do not send your dump to a maintainer or upload it to resolve a pull failure.
-For a missing tag, check the publication job and source SHA.
-For an access error, ask the image owner to check package visibility.
+If the tag is missing, check the publication job and the SHA you copied.
+For an access error, ask the image owner to check the package's visibility.
+You can always build the tools image locally instead. There is no reason
+to send your dump to a maintainer or upload it to troubleshoot a pull failure.
 
-The script exports the current commit with `git archive`.
-Commit or restore tracked changes before a build.
-Untracked files and previous build folders do not enter that source export.
+Before starting a build, commit or restore any tracked changes. The script
+exports the current commit with `git archive`, so untracked files and previous
+build folders are not included in the source it compiles.
 
 ## Build the tools image locally
 
-Use this option if GHCR is unavailable or no suitable image exists.
-It does not require GitHub Actions, GHCR access, or a GitHub token.
-Clone the repository and select the source revision you want to build.
-Run this command from its root:
+You can build the same tools image locally if GHCR is unavailable or there
+is no suitable public image. This route needs neither GitHub Actions nor
+GHCR access or a GitHub token. Clone the repository, select the revision you
+want to build, and run the following from its root:
 
 ```bash
 bash tools/build-linux-release.sh --game "/absolute/path/to/data" \
-  --version 0.12.0 --jobs 2
+  --version 0.13.0 --jobs 2
 ```
 
-Without `--skip-image-build`, the script first builds the tools image locally.
-It then builds both packages.
-Use a clean tracked checkout, as with the published-image path.
+Without `--skip-image-build`, the script builds the tools image before
+compiling both packages. As with the published-image route, tracked files
+must be clean so the source export matches the selected commit.
 
 ## Package contents and privacy
 
-The output files are:
+The commands above produce:
 
-- `dist/Linux-MHGURecomp.0.12.0.tar.gz`.
-- `dist/LinuxARM64-MHGURecomp.0.12.0.tar.gz`.
-- `dist/SHA256SUMS`.
+- `dist/Linux-MHGURecomp.0.13.0.tar.gz`
+- `dist/LinuxARM64-MHGURecomp.0.13.0.tar.gz`
+- `dist/SHA256SUMS`
 
-Each archive contains the runtime, game library, updater, licenses, and pipelines.
-The game library, `mhgugame.so`, contains game-derived code.
-It does not contain your dump, saves, generated C, or donor content.
-Creating a package does not establish permission to distribute game-derived code.
-The project license does not cover the game or its recompiled code.
-Keep these builds private.
-Do not upload them to CI or GHCR.
+Each archive contains the runtime, game library, updater, licenses, and
+pipelines. Although it excludes your raw dump, saves, generated C, and donor
+content, its `mhgugame.so` library contains game-derived code. Building an
+archive does not give you permission to distribute that code: the project's
+license does not cover the game or its recompiled code. Keep these builds
+private and do not upload them to CI or GHCR.
 
-The dump enters only a read-only local container mount, never an image layer.
-The build context permits only selected files under `tools/`.
+Your dump is mounted read-only into the local build container, never added
+to an image layer. The image's build context allows only selected files under
+`tools/`, and only the local release command compiles your game library.
 Neither GitHub Actions nor GHCR receives your dump or generated game code.
-Only the local release command compiles your game library.
 
 ## Test the packages
 
@@ -152,76 +152,70 @@ Only the local release command compiles your game library.
 5. Put your own `exefs` and `romfs` folders in its `data/` folder.
 6. Start `mhgurecomp` on that device.
 
-Check graphics, audio, controls, and save loading on both targets.
-Back up your saves before a device test.
-The default save location remains `~/.local/share/MHGURecomp/save/`.
-The `MHGU_HOME` setting does not move that save location.
+Back up your saves before testing, then check graphics, audio, controls,
+and save loading on both targets. Saves still default to
+`~/.local/share/MHGURecomp/save/`; setting `MHGU_HOME` does not move them.
 
-Do not start the updater during this first test.
-It still contacts the original repository, not your fork.
-This workflow does not publish a game release.
+Start the runtime directly for the first test rather than using the updater.
+The updater still contacts the original repository, not your fork, and this
+workflow does not publish a game release for it to download.
 
 ## Docker on Fedora and SELinux
 
-Use the same Docker build commands on Fedora.
-Rootful Docker uses your host UID and GID.
-It also adds your supplementary groups.
-Rootless Docker uses its default user mapping.
-Keep the dump readable by your host user.
-Supplementary-group access alone might not work with rootless Docker.
-Do not add `sudo` to the build command.
+The same Docker commands work on Fedora. With rootful Docker, the script
+uses your host UID, GID, and supplementary groups; rootless Docker uses its
+default user mapping instead. Make sure your host user can read the dump,
+since access through supplementary groups alone may not work in rootless
+mode. You should still run the build command without `sudo`.
 
-On SELinux hosts, the work and output mounts use `:Z`.
-The dump mount uses `:ro,z` for shared read access.
-These options relabel only the selected folders.
-Use a dedicated dump folder, not your whole home folder.
-The script does not disable SELinux or request privileged containers.
+On an SELinux host, the work and output mounts use `:Z`, while the dump uses
+`:ro,z` for shared, read-only access. These options relabel the folders you
+select, so use a dedicated dump folder rather than mounting your whole home
+directory. The script neither disables SELinux nor requests a privileged
+container.
 
 ## Cache and failures
 
-The ignored `.linux-release/` folder holds sources, objects, and generated C.
-It contains private game-derived files after a release build.
-Do not upload or share that folder.
-Each source commit and builder image has a separate cache.
-The script never uses your existing `build-arm64/` or `obj-arm64/`.
+The ignored `.linux-release/` folder holds the build's sources, objects, and
+generated C. After a release build it contains private game-derived files,
+so do not upload or share it. Each source commit and builder image gets a
+separate cache; your existing `build-arm64/` and `obj-arm64/` are left alone.
 
-A failed target stops the command.
-The script copies packages to `dist/` only after both targets build.
-On failure, previous packages in `dist/` can still exist.
-Use the exit status and new hash check to identify a successful build.
-Rerun the same command to reuse compatible build dependencies.
-The script generates fresh game C on each release run.
+If either target fails, the command stops without copying new packages to
+`dist/`. Older packages may still be there, so use the command's exit status
+and the hash check after a successful run rather than treating their presence
+as proof of success. Rerunning the same command reuses compatible dependency
+builds, but generates fresh game C on every release run.
 
-Remote Docker contexts are not supported.
-Bind mounts must refer to files on this host.
-Dump and checkout paths can contain spaces, but not colons or newlines.
-Run one build at a time in a checkout.
+Only local Docker contexts are supported because the bind mounts refer to
+files on your host. Dump and checkout paths may contain spaces, but not
+colons or newlines. Run only one build at a time in a given checkout.
 
 ## CI scope
 
-The Linux builder workflow checks both targets without game files.
-Each job compiles the runtime and updater and runs public-code tests.
-These jobs do not produce playable releases.
-The builder itself remains `linux/amd64` for both targets.
-ARM64 target checks use QEMU.
-CI does not validate graphics or gameplay.
+The Linux builder checks both targets without game files, compiling the
+runtime and updater and running public-code tests. The builder remains
+`linux/amd64` in both jobs, with QEMU used for the ARM64 checks. These jobs
+do not produce playable releases or test graphics and gameplay.
 
-The upstream 0.12 navigation test still skips the new Cheats tab.
-CI runs that test as an advisory check and reports any failure.
-The other build, architecture, ABI, and regression checks remain required.
-This change does not modify the upstream menu or its test.
+The settings-panel navigation test is an exception to the required checks:
+the workflow currently treats it as advisory, so a failure produces a warning
+rather than failing the job. A green run therefore does not, by itself, prove
+that this particular test passed. The other build, architecture, ABI, and
+regression checks remain required.
 
 ## Maintainer: Actions and GHCR after merge
 
-This setup is for repository maintainers, not users who download a public image.
-Review the workflow before you approve a run from a fork.
-GitHub can require [manual approval for fork PRs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/approve-runs-from-forks).
-PR runs do not publish images or need game files.
+The following setup is for repository maintainers. Users downloading a
+public image do not need to configure Actions or GHCR. Before approving a
+fork's run, review the workflow; GitHub may require
+[manual approval for fork PRs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/approve-runs-from-forks).
+PR runs need no game files and do not publish images.
 
 ### Permit the workflow
 
-Actions is normally enabled, but repository or organization policies can restrict it.
-A merge does not change those policies.
+Actions is normally enabled, but repository or organization policies may
+restrict it. Merging the PR does not override those settings.
 
 1. Open the repository's **Settings → Actions → General**.
 2. Check the [Actions permissions](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
@@ -232,20 +226,20 @@ A merge does not change those policies.
 4. If **Linux builder** is disabled, open it under **Actions**.
 5. Select **Enable workflow**.
 
-See GitHub's [workflow enable instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows).
-Do not enable global write access for all workflows.
-The publisher already requests `packages: write` for its own job.
-It uses the repository's `GITHUB_TOKEN`.
-No personal access token is needed for this workflow.
+GitHub's [workflow enable instructions](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows)
+cover this process in more detail. There is no need to enable global write
+access or create a personal access token: the publication job already
+requests its own `packages: write` permission and uses the repository's
+`GITHUB_TOKEN`.
 
 ### Run the first upstream publication
 
-The merge into `master` should trigger a run when Actions permits it.
-The merge includes files that match this workflow's path filters.
-Both architecture jobs must pass before the publisher starts.
-See GitHub's [trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+When Actions permits it, merging this PR into `master` should start a run:
+the merge includes files covered by the workflow's path filters. Both
+architecture jobs must pass before publication begins. GitHub documents
+the details in its [trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
 
-If the merge did not start a run, use the manual trigger after merge:
+If no run starts after the merge, use the manual trigger:
 
 1. Open **Actions → Linux builder**.
 2. Select **Run workflow**.
@@ -253,18 +247,19 @@ If the merge did not start a run, use the manual trigger after merge:
 4. Select **Run workflow** to start it.
 5. Wait for both architecture jobs and **Publish the tools image** to pass.
 
-The manual trigger requires write access.
-The workflow file must exist on the default branch for this control to appear.
-See [Manually running a workflow](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
-Documentation-only pushes do not start this workflow.
+The manual trigger requires write access, and the workflow file must already
+exist on the default branch for the control to appear. See
+[Manually running a workflow](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+if it is missing. Documentation-only pushes do not start this workflow.
 
 ### Make the image public
 
-The workflow publishes `ghcr.io/<owner>/mhgurecomp-builder`.
-The owner is the repository owner in lowercase.
-It writes a full source-SHA tag and the moving `linux-amd64` tag.
-A new GHCR package is private by default, even for a public repository.
-See the [Container registry guide](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+The workflow publishes `ghcr.io/<owner>/mhgurecomp-builder`, using the
+repository owner's name in lowercase, with both a full source-SHA tag and
+the moving `linux-amd64` tag. A new GHCR package is private by default even
+when its repository is public, so check its visibility before directing
+users to it. GitHub's [Container registry guide](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
+explains how these packages work.
 
 1. Open the repository owner's **Packages** page.
 2. Select **mhgurecomp-builder**.
@@ -272,11 +267,10 @@ See the [Container registry guide](https://docs.github.com/en/packages/working-w
 4. Under **Danger Zone**, select **Change visibility**.
 5. Select **Public** and confirm the change.
 
-Public visibility permits anonymous downloads and exposes the image contents.
-Review the package before this change.
-Once a package is public, you cannot make it private again.
-For organization packages, the organization policy can restrict visibility changes.
-See [package access and visibility](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
+Review the image before making it public: anyone will be able to download
+its contents, and a public package cannot be made private again. Organization
+policies may also restrict visibility changes; see
+[package access and visibility](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
 
 Verify an anonymous pull with an empty temporary Docker configuration:
 
@@ -289,12 +283,13 @@ docker --config "$ANONYMOUS_CONFIG" --host unix:///var/run/docker.sock pull "$IM
 rm -r "$ANONYMOUS_CONFIG"
 ```
 
-This example uses the standard local Docker socket.
-For rootless Docker, replace the socket with your configured local socket.
-For a fork, replace `OWNER` with that fork's owner.
-Do not publish a game dump, generated game C, or playable packages.
+This example uses the standard local Docker socket. If you use rootless
+Docker, substitute its configured local socket; for a fork, also change
+`OWNER` to the fork's owner. Only the tools image belongs in this registry,
+not a game dump, generated game C, or playable packages.
 
 ## Image reproducibility
 
-APT package manifests and hashes remain under `/opt/mhgu/` in the image.
-Ubuntu repositories can change, so rebuilds are not necessarily byte-identical.
+The image keeps its APT package manifests and hashes under `/opt/mhgu/`.
+These record what was downloaded, but Ubuntu's repositories can change,
+so rebuilding the image later is not guaranteed to produce identical bytes.

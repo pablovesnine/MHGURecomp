@@ -414,10 +414,12 @@ O=obj-linux`) `dist/Linux-MHGURecomp.0.10.4.tar.gz`, which keeps the programs ex
 with `mhgurecomp(.exe)`, `mhgugame.dll` / `.so`, `mhgurecomp-updater(.exe)`, the bundled DLLs, `licenses\`,
 `bonus\system` (from `BONUS`, else left empty), and empty `data\`, `mods\` and `cheats\` folders; never anything of
 the game's, or the build folder's settings, caches or mods. `make dist` prints each archive's SHA-256.
-Linux ARM64 uses `dist/LinuxARM64-MHGURecomp.0.10.4.tar.gz` and a `LinuxARM64-MHGURecomp` folder.
-Pass the same `TARGET_ARCH`, `SYSROOT`, `B` and `O` as for the build.
-See the [manual Linux guide](docs/BUILD-LINUX-MANUAL.md#linux-arm64).
-Packaging requires the complete build, including the target's `mhgugame.so`.
+
+For Linux ARM64, the equivalent archive is `dist/LinuxARM64-MHGURecomp.0.10.4.tar.gz`,
+containing a `LinuxARM64-MHGURecomp` folder. Use the same `TARGET_ARCH`, `SYSROOT`, `B`
+and `O` values as for the build, and make sure the target's `mhgugame.so` is present:
+packaging needs the complete build. The [manual Linux guide](docs/BUILD-LINUX-MANUAL.md#linux-arm64)
+explains these options.
 
 On Windows, when the Android SDK is installed (see [docs/research/android.md](docs/research/android.md)), `make dist`
 then also writes `dist\Android-MHGURecomp.0.10.4.apk`: arm64 only, with `pipelines.list`, `licenses` and the bonus
@@ -453,29 +455,29 @@ described above.
 
 ### Linux
 
-Use Docker on an **x86-64 Linux PC** to build both Linux packages.
-One x86-64 tools image also cross-compiles the ARM64 package.
-These packages target Linux with glibc, not Android.
-You need your own complete MHGU 1.4.0 dump.
+The recommended way to build for Linux is to use Docker on an **x86-64 Linux PC**.
+The same tools image builds the x86-64 package and cross-compiles the ARM64 package,
+so you do not need an ARM machine to compile it. Both target Linux with glibc, not
+Android, and require your own complete MHGU 1.4.0 dump.
 
 1. Install Docker from the [official installation guide](https://docs.docker.com/engine/install/).
 2. Configure access with the [Linux post-installation guide](https://docs.docker.com/engine/install/linux-postinstall/)
    or the [rootless guide](https://docs.docker.com/engine/security/rootless/).
-   The `docker` group grants root-level privileges.
-3. Check that this command shows the Docker server without `sudo`:
+   Keep in mind that membership in the `docker` group grants root-level privileges.
+3. Before building, check that you can reach the Docker server without `sudo`:
 
    ```bash
    docker info
    ```
 
-4. Open **Actions → Linux builder** in the repository you trust.
-   Select a successful run on `master` or `linux-arm64-0118`, not a PR run.
-   Make sure **Publish the tools image** also passed.
-   Copy that run's full source commit SHA.
-   If no image exists yet, use the [local builder option](docs/BUILD-LINUX-DOCKER.md#build-the-tools-image-locally).
+4. Open **Actions → Linux builder** in a repository you trust and choose a successful
+   run on `master` or `linux-arm64-0118`. Check that **Publish the tools image** passed,
+   then copy the run's full source commit SHA. PR runs do not publish images; if no
+   image is available, use the [local builder option](docs/BUILD-LINUX-DOCKER.md#build-the-tools-image-locally)
+   instead.
 
-5. Clone that repository and select the same commit.
-   For a fork, replace `morerokk/MHGURecomp` with its owner and repository name.
+5. Clone the same repository and select that commit. If you are using a fork,
+   replace `morerokk/MHGURecomp` with its owner and repository name first:
 
    ```bash
    REPOSITORY=morerokk/MHGURecomp
@@ -488,23 +490,22 @@ You need your own complete MHGU 1.4.0 dump.
    docker pull "$IMAGE"
    ```
 
-   Use the SHA from a run that published an image, not any latest commit.
-   Documentation-only pushes do not publish an image.
-   A public image needs no GitHub login, fork, or Actions setup.
-   The upstream image is available only after an upstream publication.
-   A fork's image belongs to that fork's owner.
+   Use a SHA that actually has a published image, rather than simply choosing the
+   latest commit: documentation-only pushes do not publish one. Public images need
+   no GitHub login, fork, or Actions setup. A fork's image belongs to its owner;
+   upstream's image is only available after upstream publishes it.
 
 6. Build both packages with your local dump:
 
    ```bash
    bash tools/build-linux-release.sh --game "/absolute/path/to/data" \
-     --version 0.12.0 --jobs 2 --image "$IMAGE" --skip-image-build
+     --version 0.13.0 --jobs 2 --image "$IMAGE" --skip-image-build
    ```
 
-   The dump folder must contain `exefs/main`, `exefs/sdk`, and `romfs/`.
-   Do not run the build command with `sudo`.
-   The dump enters a read-only local mount.
-   Neither GitHub Actions nor GHCR receives it.
+   The folder must contain `exefs/main`, `exefs/sdk`, and `romfs/`. Run the command as
+   your normal user, without `sudo`; your dump is mounted read-only into the local
+   container and is never sent to GitHub Actions or GHCR. The example labels the
+   packages as `0.13.0`; use the appropriate version if you build a different release.
 
 7. Check both package hashes:
 
@@ -512,29 +513,29 @@ You need your own complete MHGU 1.4.0 dump.
    (cd dist && sha256sum -c SHA256SUMS)
    ```
 
-   The packages are `dist/Linux-MHGURecomp.0.12.0.tar.gz` for x86-64
-   and `dist/LinuxARM64-MHGURecomp.0.12.0.tar.gz` for ARM64.
-   Each contains game-derived `mhgugame.so`, but no raw dump or saves.
-   Do not upload these private builds to CI or GHCR.
+   This produces `dist/Linux-MHGURecomp.0.13.0.tar.gz` for x86-64 and
+   `dist/LinuxARM64-MHGURecomp.0.13.0.tar.gz` for ARM64. Neither contains your raw
+   dump or saves, but both include the game-derived `mhgugame.so`. Keep those builds
+   private rather than uploading them to CI or GHCR.
 
-8. Extract each package on its target device.
-   Add your own `exefs` and `romfs` folders under its `data/` folder.
-   Start `mhgurecomp`, not the updater, for the first test.
-   Back up your saves first.
+8. Back up your saves, extract each package on its target device, and put your own
+   `exefs` and `romfs` folders under its `data/` folder. For the first test, start
+   `mhgurecomp` directly rather than using the updater, which still contacts the
+   upstream repository.
 
-Actions publishes tools, not playable game packages.
-See [Build both Linux packages](docs/BUILD-LINUX-DOCKER.md)
-for Docker on Fedora, caches, device tests, and the maintainer's Actions/GHCR setup.
-For native builds or WSL, use the [advanced manual guide](docs/BUILD-LINUX-MANUAL.md).
+Actions publishes the tools image, not playable game packages. The
+[Docker guide](docs/BUILD-LINUX-DOCKER.md) covers Fedora, caches, device tests,
+and the maintainer's Actions/GHCR setup in more detail. For native builds or
+WSL, use the [advanced manual guide](docs/BUILD-LINUX-MANUAL.md).
 
 #### Linux ARM64
 
-The Docker command above builds ARM64 without a manual sysroot setup.
-For native ARM64 builds or manual cross-builds, use the
-[manual Linux overview](docs/BUILD-LINUX-MANUAL.md#linux-arm64)
-and the [detailed ARM64 guide](docs/BUILD-LINUX-ARM64.md).
-The device still needs the renderer's Vulkan features and enough virtual address space.
-QEMU checks do not validate graphics or gameplay.
+The Docker route above prepares the ARM64 sysroot for you. If you would rather
+compile natively on ARM64 or manage a cross-build yourself, start with the
+[manual Linux overview](docs/BUILD-LINUX-MANUAL.md#linux-arm64) and the
+[detailed ARM64 guide](docs/BUILD-LINUX-ARM64.md). In either case, the device
+still needs the renderer's Vulkan features and enough virtual address space:
+passing the small QEMU checks does not establish graphics or gameplay compatibility.
 
 ## Repository layout
 
