@@ -6,9 +6,9 @@ a desktop session and Vulkan 1.2 with the renderer's required features.
 The build checks ELF64 AArch64 and imported symbol ceilings of
 GLIBC 2.39 and GLIBCXX 3.4.32, not GPU compatibility.
 
-The owner successfully built and ran the earlier consolidation at
-`a4c6263e068f01ab2dd3344a8f49d6dbc3533d8e`.
-That device test does not validate future automatically integrated changes.
+The maintainer reports a successful build on a Linux x86-64 PC and execution
+on an Odin 3 ARM64 device. This is a device report, not certification of
+every revision or future automatically integrated changes.
 CI checks public runtime code without a dump, GPU or game library.
 
 ## Install and test

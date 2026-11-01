@@ -209,6 +209,25 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(self.git(self.repo, "ls-tree", "-r", "--name-only",
                                   result["sha"], "android"), "")
 
+    def test_real_fork_policy_never_reintroduces_personal_build_files(self):
+        policy = json.loads((SCRIPT.parent / "fork-policy.json").read_text())
+        policy["shared"]["files"] += ["common", "fork", "upstream", "human"]
+        self.commit("tools/fork-policy.json", json.dumps(policy))
+        self.git(self.writer, "push", "origin", "master")
+        self.git(self.writer, "reset", "--hard", "HEAD~1")
+        retired = ("update-build-arm64.sh", "tests/test_update_build.py")
+        for path in retired:
+            self.commit(path, "upstream attempts to add a retired personal entry\n")
+        self.git(self.writer, "push", "upstream", "master")
+        self.worker.refresh()
+        candidate = self.candidate()
+        for path in retired:
+            with self.subTest(path=path):
+                self.assertEqual(sync.classify(policy, path), "remove")
+                self.assertEqual(self.git(self.repo, "ls-tree", candidate["sha"],
+                                          "--", path), "")
+                self.assertIn(path, candidate["omitted"])
+
     def test_trusted_policy_not_upstream_policy(self):
         self.commit("tools/fork-policy.json", '{"version":999,"keep":{}}')
         self.commit(".github/new.yml", "untrusted")

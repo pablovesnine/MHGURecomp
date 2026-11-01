@@ -50,17 +50,39 @@ class ForkDocumentationTests(unittest.TestCase):
     def test_single_supported_build_entry(self):
         readme = (ROOT / "README.md").read_text()
         self.assertIn("pablovesnine/MHGURecomp.git", readme)
-        self.assertIn("update-build-arm64.sh", readme)
-        self.assertLessEqual(len(readme.splitlines()), 70)
+        self.assertIn("bash tools/build-linux-release.sh", readme)
+        self.assertIn('--game "$GAME_DIR"', readme)
+        self.assertIn('--version "$BUILD_VERSION"', readme)
+        self.assertIn("--jobs 2", readme)
+        self.assertIn("date -u +%Y%m%d.%H%M%S", readme)
+        self.assertIn("sha256sum --check SHA256SUMS", readme)
+        self.assertIn("git pull --ff-only origin master", readme)
+        self.assertIn("git --version", readme)
+        self.assertIn("docker info", readme)
+        self.assertIn("Linux x86-64", readme)
+        self.assertIn("https://github.com/pablovesnine/MHGURecomp/releases", readme)
+        self.assertLessEqual(len(readme.splitlines()), 100)
         self.assertIn("Docker", readme)
         self.assertIn("1.4.0", readme)
         self.assertIn("morerokk/MHGURecomp", readme)
-        for platform in ("x86", "x64", "amd64", "windows", "android", "msys"):
+        for platform in ("windows", "android", "msys"):
             self.assertNotIn(platform, readme.lower())
         self.assertNotIn("BUILD-LINUX-MANUAL", readme)
         self.assertNotIn("BUILD-LINUX-DOCKER", readme)
         self.assertNotIn("mhgurecomp-updater.exe", readme)
         self.assertNotIn("Linux-MHGURecomp.0.13.0", readme)
+
+    def test_public_documents_have_no_personal_script_or_home_paths(self):
+        for document in DOCUMENTS:
+            with self.subTest(document=document.name):
+                text = document.read_text()
+                self.assertNotIn("update-build-arm64", text)
+                self.assertNotRegex(text, r"/home/[^/\s]+/")
+                self.assertNotRegex(text, r"~/(?:MHGURecomp|[^/\s]+-test)")
+
+    def test_personal_entry_points_are_not_public_files(self):
+        self.assertEqual(list(ROOT.glob("update-build-arm64*.sh")), [])
+        self.assertFalse((ROOT / "tests/test_update_build.py").exists())
 
     def test_notices_and_shared_sources_remain(self):
         for relative in (

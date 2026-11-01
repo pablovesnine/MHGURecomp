@@ -16,6 +16,8 @@
 /.linux-release/
 /dist/
 /build-arm64*.log
+# Personal convenience scripts are not part of the public build interface.
+/update-build-arm64*.sh
 tools/venv/
 __pycache__/
 *.pyc

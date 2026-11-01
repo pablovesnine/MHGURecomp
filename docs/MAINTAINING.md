@@ -72,9 +72,12 @@ Dependency update PRs remain reviewable; they are not upstream sync.
 
 ## Local build and privacy
 
-Use `update-build-arm64.sh`; it only fast-forwards a clean master checkout.
-It preserves ignored caches and refuses divergent/local changes.
-The build script exports tracked HEAD, not unrelated working files.
+Follow the public commands in the [README](../README.md#build), using
+`tools/build-linux-release.sh` and your own dump path and build label.
+Update a clean master checkout with `git pull --ff-only origin master`;
+do not reset local changes or clean ignored caches to update.
+Personal convenience scripts belong outside the checkout, not in Git.
+The public wrapper exports tracked HEAD, not unrelated working files.
 Dump mounts are read-only; SELinux labels are adjusted on the dedicated
 dump/work/output directories. Never point the dump option at your home root.
 
@@ -83,6 +86,8 @@ Build labels are numeric timestamps, not a choice of upstream release.
 tools image and program hashes. Verify checksums only after a successful
 build; old archives may still exist after a failed attempt.
 
-`.linux-release/`, logs and `dist/` are local outputs. Generated game code,
-the game library and the final archive stay private.
+`.linux-release/`, logs and `dist/` are local outputs, not tracked sources.
+Never attach dumps, generated sources or private build folders to Issues.
+Maintainer release uploads are manual; CI publishes only the tools image.
+The fork's license does not authorize redistribution of game-derived code.
 Licenses and required third-party sources must remain intact.

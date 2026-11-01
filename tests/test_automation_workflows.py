@@ -46,6 +46,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("retention-days: 1", self.builder)
         self.assertNotIn("if: steps.source.outputs.publish", self.builder)
         self.assertNotIn("pull_request_target", self.builder + self.ci + self.sync)
+        self.assertNotIn("update-build-arm64.sh", self.builder)
 
     def test_mandatory_lint_runtime_qemu(self):
         for text in ("runs-on: ubuntu-24.04", "timeout-minutes: 60",
@@ -116,12 +117,12 @@ class WorkflowTests(unittest.TestCase):
         policy = sync.validate_policy(json.loads((ROOT / "tools/fork-policy.json").read_text()))
         for path in ("README.md", ".github/workflows/brand-new.yml", "docs/new.md",
                      "tools/sync-upstream.py", "tools/fork-policy.json",
-                     "tools/docker/new.sh", "update-build-arm64.sh", "updater/updater.h",
-                     "tests/test_update_build.py"):
+                     "tools/docker/new.sh", "updater/updater.h"):
             self.assertEqual(sync.classify(policy, path), "keep", path)
         for path in ("android/new.c", "server/new.c", "extras/cheats/new.txt",
                      "runtime/platform/android.c", "runtime/platform/windows.c",
-                     "tools/bundle_dlls.py", "updater/new.c", "tests/test_update_arch.c"):
+                     "tools/bundle_dlls.py", "updater/new.c", "tests/test_update_arch.c",
+                     "update-build-arm64.sh", "tests/test_update_build.py"):
             self.assertEqual(sync.classify(policy, path), "remove", path)
         for path in ("updater/sha256.c", "runtime/new.c", "third_party/new.c"):
             self.assertEqual(sync.classify(policy, path), "shared", path)
