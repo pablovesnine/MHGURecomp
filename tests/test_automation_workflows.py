@@ -117,6 +117,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("retention-days: 1", self.builder)
         self.assertIn('[[ -z "$CANDIDATE"', self.builder)
 
+    def test_bootstrap_branch_runs_checks_but_cannot_publish(self):
+        self.assertIn("branches: [master, fork-arm64-maintenance]", self.ci)
+        publish = job(self.ci, "publish")
+        self.assertIn("github.ref == 'refs/heads/master'", publish)
+
     def test_dependabot_monthly_grouped_no_automerge(self):
         text = (ROOT / ".github/dependabot.yml").read_text()
         self.assertEqual(text.count("interval: monthly"), 2)

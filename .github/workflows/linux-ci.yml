@@ -2,7 +2,8 @@ name: Linux ARM64 CI and master tools publication
 
 on:
   push:
-    branches: [master]
+    # The temporary consolidation branch gets checks but never publication.
+    branches: [master, fork-arm64-maintenance]
   pull_request:
     branches: [master]
   workflow_dispatch:
