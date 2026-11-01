@@ -1,5 +1,6 @@
 """ARM64-only build regressions; ELF headers are explicit test fixtures."""
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -99,16 +100,28 @@ class BuildTests(unittest.TestCase):
         self.assertTrue((ROOT / "updater/updater.h").is_file())
         self.assertTrue((ROOT / "runtime/platform/win_compat.h").is_file())
 
-    def test_updater_arch_headers_retained_for_merge_compatibility(self):
-        # Host-native header unit tests, not supported build targets.
-        for machine, flags in ((62, []), (183, []), (62, ["-D_WIN32"])):
-            with tempfile.TemporaryDirectory() as tmp:
-                exe = str(Path(tmp) / "test")
-                subprocess.run(["clang", "-std=c11", "-Wall", "-Wextra",
-                                "-Werror", f"-DMHGU_TARGET_MACHINE={machine}",
-                                *flags, "-I.", "tests/test_update_arch.c",
-                                "-o", exe], cwd=ROOT, check=True)
-                subprocess.run([exe], check=True)
+    def test_only_shared_hash_remains_and_computes_correct_digest(self):
+        self.assertEqual(
+            {p.name for p in (ROOT / "updater").iterdir() if p.is_file()},
+            {"sha256.c", "updater.h"},
+        )
+        # This is a public unit test vector, never game-derived content.
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "hash.c"
+            source.write_text(
+                '#include "updater/updater.h"\n#include <stdio.h>\n'
+                'int main(void) { Sha256 s; char out[65]; sha256_init(&s);'
+                'sha256_update(&s, "abc", 3); sha256_hex(&s, out);'
+                'puts(out); return 0; }\n'
+            )
+            exe = str(Path(tmp) / "test")
+            subprocess.run(
+                ["clang", "-std=c11", "-Wall", "-Wextra", "-Werror",
+                 "-I.", str(source), "updater/sha256.c", "-o", exe],
+                cwd=ROOT, check=True,
+            )
+            result = subprocess.check_output([exe], text=True).strip()
+            self.assertEqual(result, hashlib.sha256(b"abc").hexdigest())
 
 
 class PackageTests(unittest.TestCase):

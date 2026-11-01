@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "keep": {
+    "files": [
+      "README.md", "Makefile", ".gitignore", "update-build-arm64.sh",
+      "tools/.dockerignore", "tools/desktop-arch.mk", "tools/dist.py",
+      "tools/build-linux-release.sh", "tools/sync-upstream.py", "tools/fork-policy.json",
+      "updater/updater.h",
+      "tests/test_build_arch.py", "tests/test_linux_release.py", "tests/test_fork_docs.py",
+      "tests/test_upstream_sync.py", "tests/test_automation_workflows.py",
+      "tests/test_update_build.py"
+    ],
+    "prefixes": [".github/", "docs/", "tools/docker/"]
+  },
+  "remove": {
+    "files": [
+      "runtime/platform/android.c", "runtime/platform/windows.c",
+      "tools/bundle_dlls.py", "tests/test_update_arch.c"
+    ],
+    "prefixes": ["android/", "server/", "extras/cheats/", "updater/"]
+  },
+  "shared": {
+    "files": [
+      "LICENSE", "THIRD_PARTY_NOTICES", "extras/pipelines.list", "updater/sha256.c",
+      "tools/disasm.py", "tools/gamelib_entry.c", "tools/gen.py", "tools/hle_list.py",
+      "tools/imgui_thunks.py", "tools/lifter.py", "tools/mtarc.py", "tools/neon.py",
+      "tools/nso.py", "tools/requirements.txt", "tools/retool.py", "tools/samples.py",
+      "tools/test_harness.c", "tools/test_lift.py", "tools/vkprobe.c", "tools/vkreplay.c"
+    ],
+    "prefixes": ["runtime/", "third_party/", "tests/"]
+  }
+}

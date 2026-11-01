@@ -5,7 +5,7 @@
 // (players joining or leaving, the hub's advertise data), and relays the game's packets between the players
 // (net.h, vsock.c). Only the host needs a reachable port.
 //
-// Internet hubs (ini [Multiplayer] Server, server/ in the repository): with a hub server, a created hub is also listed
+// Internet hubs (ini [Multiplayer] Server): with a hub server, a created hub is also listed
 // there, for players with the same matchmaking key (ini Key, empty: public) and port version, and Scan adds the
 // server's hubs to the LAN's. Joining one goes through the server, which splices the player's connection to one the
 // host opens for it: the same link as a direct connection, so nobody forwards a port. Game packets go by UDP through
@@ -118,7 +118,7 @@ typedef struct { char magic[4]; uint32_t token; uint8_t kind, pad[3]; } UHdr;
 #define UDP_MAX_PAYLOAD 8192
 #define UDP_SILENCE_NS 15000000000ull
 
-// The hub server (server/server.go has the protocol): control frames like the link's; requests start with a header
+// Hub protocol: control frames like the link's; requests start with a header
 // "MHGS", u16 LOBBY_PROTO, u16 PROTO_VERSION, room[16] (the matchmaking key's hash).
 #define LOBBY_PROTO 1
 #define LOBBY_PORT 39510
@@ -677,6 +677,8 @@ static bool lobby_server(char *out) {
 
 // A request's header. The room is a hash of the matchmaking key (key NULL: ini Key; spaces around it ignored): hubs
 // are listed only for players whose key matches, all of them without one. The server never sees the key itself.
+// Android without a key: the room of the key "public-phone", so a phone's public hubs are among phones only and no key
+// reaches the PCs' public room (all zero): phones play with PCs only by sharing a key.
 static bool lobby_header(uint8_t *h, const char *key) {
     static const char salt[] = "MHGURecomp matchmaking key:";
     char live[sizeof g_config.ldn_key];
@@ -689,6 +691,9 @@ static bool lobby_header(uint8_t *h, const char *key) {
     while (*k == ' ') k++;
     size_t n = strlen(k);
     while (n && k[n - 1] == ' ') n--;
+#ifdef __ANDROID__
+    if (!n) k = "public-phone", n = strlen(k);
+#endif
     if (!n) return false;
     Sha256 s;
     char hex[65];

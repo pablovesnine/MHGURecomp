@@ -6,7 +6,7 @@
 // sends their actions), the others' copies follow (0x80 cleared: they replay what arrives); alone in a zone, a
 // player's small monsters behave as the game made them. A filter in the game's per-monster receive (tools/gen.py
 // PATCHES, 0x2cb120) drops small monster messages from a player in another zone and
-// those reaching the master. Details: docs/research/small-monster-sync.md.
+// those reaching the master.
 #include <string.h>
 
 #include "../config.h"

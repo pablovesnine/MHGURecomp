@@ -7,7 +7,7 @@ LABEL org.opencontainers.image.title="MHGURecomp Linux ARM64 builder" \
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates clang-18 lld-18 llvm-18 gcc-13 g++-13 make cmake \
-    ninja-build nasm pkg-config git util-linux shellcheck \
+    ninja-build pkg-config git util-linux shellcheck \
     python3 python3-venv python3-pip \
     curl tar xz-utils file binutils qemu-user \
     zlib1g-dev libvulkan-dev libegl-dev libwayland-dev wayland-protocols \

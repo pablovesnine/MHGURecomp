@@ -1,160 +1,88 @@
-# Maintaining the Linux ARM64 fork
+# Maintenance
 
-`master` is the only permanent product branch. Preserve the upstream history
-and merge updates normally; do not periodically replace this fork with
-upstream's tree or squash away the imported ancestry.
+`master` is the only permanent branch. Upstream history is retained through
+normal merge commits. No force-push, reset of published history or routine
+manual PR approval is needed.
 
-## One-time GitHub setup
+## Automatic upstream updates
 
-1. In this fork's **Actions** tab, enable workflows if GitHub has disabled
-   them for the fork.
-2. In **Settings → Actions → General**, permit the pinned actions used by
-   the workflows and enable **Allow GitHub Actions to create and approve
-   pull requests**. The jobs request their own limited permissions; a
-   globally read/write default is not needed.
-3. Enable the scheduled upstream-sync workflow. Its manual trigger is also
-   available in Actions. GitHub can disable public-repository schedules
-   after 60 days without repository activity; re-enable the workflow if
-   needed rather than adding artificial keepalive commits.
-4. After the first successful tools-image publication, check the
-   `mhgurecomp-builder` package under the owner's **Packages**. Associate it
-   with this repository, grant this repository Actions access if needed,
-   and change visibility to **Public**. New packages can initially be
-   private even when the repository is public.
-5. Enable **Issues** in repository settings if reports and automatic
-   conflict-tracking issues are wanted. The fork previously had Issues
-   disabled.
-6. Enable automatic deletion of merged PR head branches for Dependabot and
-   manual update branches. The maintenance workflow's own deletion guard
-   remains restricted to its explicitly named branches.
+**Synchronize upstream after read-only ARM64 validation** checks
+`morerokk/MHGURecomp:master` every six hours, after master pushes, and
+can also be started manually from Actions.
 
-These settings may require owner permissions beyond Contents/Pull requests.
-The automation does not store a personal access token: it uses the
-short-lived `GITHUB_TOKEN` supplied to each job.
+1. Prepare a normal merge using the fork policy.
+2. Validate the exact candidate with public ARM64 tests.
+3. Advance `master` only if validation passed and its expected base has
+   not changed.
+4. Publish the same tested tools image to GHCR.
+5. Remove only the incorporated temporary branch tip.
 
-GitHub documents the relevant behavior in
-[workflow trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow),
-[workflow activation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows)
-and the [Container registry guide](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+The internal `bot/upstream-sync` branch exists only while an update is
+being tested or needs intervention. It is not a second product branch.
+Human edits on that branch are never overwritten.
 
-## Upstream synchronization
+`tools/fork-policy.json` protects the fork's README, automation and build
+rules and keeps retired paths deleted. Shared runtime, recompiler and
+dependency changes merge normally. The policy comes from trusted master,
+not from the candidate. Actions reports which upstream changes the policy
+excluded. Preserving a fork-owned build file can omit an upstream build
+adjustment; inspect these summaries when diagnosing incompatibilities.
 
-The scheduled workflow checks `morerokk/MHGURecomp:master` every six hours.
-It proposes changes in `bot/upstream-sync`, opening or updating one PR in
-**this fork**, never in upstream. The candidate preserves the upstream and
-fork histories through ordinary merges.
+An unexpected shared-code conflict stops integration and updates one issue.
+Repeated unchanged blockers do not trigger new builds or duplicate issues.
+Resolve files individually; do not use a blanket merge strategy.
+The issue is closed after its blocking upstream revision is incorporated.
+Test failures remain failures, not successful updates. Select
+`retry_validation` on a manual run to retry an unchanged blocker.
 
-No new upstream commits means no compilation. An already checked candidate
-is not rebuilt on every scheduled poll. The workflow explicitly invokes
-the public ARM64 validation for a new candidate, rather than relying on a
-bot push to start another workflow. GitHub may put PR-event runs created by
-`GITHUB_TOKEN` into an approval-required state; the explicit sync validation
-is the path used by this automation.
+## CI and images
 
-The result belongs to an exact candidate SHA. If `master` or upstream moves,
-reevaluate the merge candidate and its checks. A result for an earlier tip
-does not establish that a changed merge is safe.
+Public CI checks scripts, Python regressions, compiler probes, the ARM64
+runtime, settings/panel navigation, fault handling and ELF imports.
+It never receives a dump or exercises the game or GPU.
 
-### Review an update
+The tools image runs on a Linux x86_64 build PC and cross-compiles for
+ARM64. Keep that distinction in build internals; ARM64 is the only product.
+Docker Engine with a local Unix socket is required; Fedora's installed
+Moby engine is suitable. Do not replace an existing working installation.
 
-Read the diff and test result linked from the PR. Pay particular attention
-to build-system changes, platform additions, target dependencies and file
-deletions: upstream remains multiplatform, while this fork deliberately is
-not. A clean textual merge can still reintroduce unsupported instructions.
+Tools images use
+`ghcr.io/pablovesnine/mhgurecomp-builder:<full-source-SHA>`.
+The publisher verifies master, image identity, platform and source labels;
+it does not execute candidate code. A public image needs no registry login.
+If publication fails after master advanced, retry publication for the same
+validated SHA rather than rolling back source history. The builder summary
+provides the source SHA, image ID, artifact name and run ID for the manual
+**Publish a validated master tools image** workflow. Its transport artifact
+lasts one day. A manual master CI run can rebuild, validate and publish if
+the artifact expired. After successful manual recovery, close issue #2;
+a no-op sync deliberately keeps an unresolved publication warning open.
 
-A green public-code check does not establish game/device compatibility.
-Perform a private build and device test when the update warrants it, then
-merge the PR with **Create a merge commit**, not squash/rebase.
-The cleanup job deletes only designated temporary branches whose current
-tips are already ancestors of `master`.
+Read/write Git/API work, read-only candidate execution and packages
+publication use separate jobs. Automation uses short-lived GITHUB_TOKEN;
+never add a personal token as a permanent secret.
 
-### Resolve a conflict
+## GitHub settings
 
-The bot does not resolve conflicts with blanket `ours` or `theirs`, nor
-overwrite manual commits on its branch. Inspect the existing PR or the
-workflow failure/issue. If no candidate branch could be created, start a
-manual update from `master`:
+Keep Actions, scheduled workflows and Issues enabled. The GHCR package
+must remain public and accessible to this repository's Actions.
+Public-repository schedules may be disabled after prolonged inactivity;
+re-enable them in Actions rather than adding artificial keepalive commits.
+Dependency update PRs remain reviewable; they are not upstream sync.
 
-```bash
-git switch master
-git pull --ff-only
-git remote add upstream https://github.com/morerokk/MHGURecomp.git
-git fetch upstream master
-git switch -c manual/upstream-update
-git merge --no-ff upstream/master
-```
+## Local build and privacy
 
-If `upstream` already exists, verify its URL instead of adding it again.
-Resolve files individually and run the public checks:
+Use `update-build-arm64.sh`; it only fast-forwards a clean master checkout.
+It preserves ignored caches and refuses divergent/local changes.
+The build script exports tracked HEAD, not unrelated working files.
+Dump mounts are read-only; SELinux labels are adjusted on the dedicated
+dump/work/output directories. Never point the dump option at your home root.
 
-```bash
-git add <resolved-files>
-git commit
-bash tools/build-linux-release.sh --check --version 0 --jobs 2
-git push -u origin manual/upstream-update
-```
+Build labels are numeric timestamps, not a choice of upstream release.
+`--version` overrides the label only. Build metadata records the exact SHA,
+tools image and program hashes. Verify checksums only after a successful
+build; old archives may still exist after a failed attempt.
 
-Open a PR to this fork's `master`. Preserve ARM64-only packaging and the
-privacy boundary. Do not restore the binary updater just because upstream
-changed it. If manually editing an existing bot PR instead, the bot will
-stop automatic updates rather than erase those edits; finish and merge
-that PR manually.
-
-## CI and tools-image publication
-
-Public checks run on an x86_64 runner. The tools container cross-compiles
-the ARM64 runtime and uses QEMU for small tests, without a game dump.
-The pipeline checks shell/workflow syntax, Python regression tests,
-compiler probes, ELF/import ceilings, settings/locales, fault handling and
-settings-panel navigation. A panel failure is a failure, not an advisory
-exception.
-
-Only a validated `master` build may publish
-`ghcr.io/pablovesnine/mhgurecomp-builder:<full-source-SHA>`. PR and sync
-candidates never publish. The publisher receives the same tested tools
-image as a short-lived transport artifact, then loads and pushes it without
-running candidate scripts. Its registry permissions are separated from the
-read-only build job.
-
-Check the recorded digest and try an anonymous pull from a clean Docker
-configuration before calling the package publicly available:
-
-```bash
-revision="$(git rev-parse HEAD)"
-docker pull "ghcr.io/pablovesnine/mhgurecomp-builder:$revision"
-```
-
-Use a temporary `DOCKER_CONFIG` with no stored login for an anonymous-access
-test; ordinary `docker pull` may otherwise use existing credentials.
-The wrapper verifies that the selected image is x86_64 and matches the source
-revision. For a local rebuild from that commit's tracked source:
-
-```bash
-bash tools/build-linux-release.sh --check --version 0 --jobs 2 \
-  --rebuild-image
-```
-
-The Ubuntu base digest and source revision identify important inputs, but
-APT repositories can change. Retained package manifests and image digests
-aid debugging; they are not a promise of bit-for-bit reproducibility.
-
-Dependabot proposes grouped monthly Actions/Docker updates. Review and test
-them like source updates. Do not automatically raise GLIBC/GLIBCXX ceilings
-to make a dependency update pass.
-
-## Safety boundaries
-
-- Write-permission jobs operate only on trusted maintenance code, Git refs
-  and GitHub APIs; candidate build/test code runs without write tokens.
-- No `pull_request_target` job executes candidate code.
-- No workflow receives a dump, game library, generated game source or save.
-- No game archive is published to Releases, Actions artifacts or GHCR.
-- Cache transport contains public build dependencies/tools, not private
-  local `.linux-release/` output.
-- Branch deletion is restricted to named maintenance branches and checks
-  current ancestry; a concurrent or human advance is not discarded.
-
-Inherited platform implementations and the updater SHA256 implementation
-remain where shared code needs them. Dedicated Android packaging and
-Windows launchers are not maintained entry points. Technical documents
-outside the README may discuss upstream platforms as historical context.
+`.linux-release/`, logs and `dist/` are local outputs. Generated game code,
+the game library and the final archive stay private.
+Licenses and required third-party sources must remain intact.
