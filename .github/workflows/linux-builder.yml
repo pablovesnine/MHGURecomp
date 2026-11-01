@@ -1,119 +1,128 @@
-name: Linux builder
+name: Linux ARM64 validation
 
 on:
-  push:
-    branches: [master, linux-arm64-0118]
-    paths:
-      - Makefile
-      - 'tools/**'
-      - 'runtime/**'
-      - 'updater/**'
-      - 'tests/**'
-      - 'third_party/**'
-      - 'extras/**'
-      - .github/workflows/linux-builder.yml
-  pull_request:
-    paths:
-      - Makefile
-      - 'tools/**'
-      - 'runtime/**'
-      - 'updater/**'
-      - 'tests/**'
-      - 'third_party/**'
-      - 'extras/**'
-      - .github/workflows/linux-builder.yml
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      candidate_ref:
+        description: Exact candidate commit SHA; empty for ordinary CI
+        type: string
+        required: false
+        default: ''
+    outputs:
+      source_sha:
+        description: Exact checked-out and tested revision
+        value: ${{ jobs.check.outputs.source_sha }}
+      publish:
+        description: Whether this is a genuine master push/manual run without a candidate
+        value: ${{ jobs.check.outputs.publish }}
+      image_id:
+        description: ID of the transported tested image
+        value: ${{ jobs.check.outputs.image_id }}
 
 permissions:
   contents: read
 
 concurrency:
-  group: linux-builder-${{ github.ref }}
-  cancel-in-progress: true
+  group: linux-arm64-${{ inputs.candidate_ref || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
-    name: Linux ${{ matrix.arch }} without game data
+    name: AArch64 without game data (amd64 host)
+    # Bot candidates are tested by upstream-sync's explicit reusable call,
+    # not by a token-generated PR event (which may await approval).
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.ref != 'bot/upstream-sync' ||
+      github.event.sender.login != 'github-actions[bot]' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x86_64, aarch64]
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+      publish: ${{ steps.source.outputs.publish }}
+      image_id: ${{ steps.image.outputs.id }}
     steps:
+      - name: Require exact reusable candidate SHA
+        env:
+          CANDIDATE: ${{ inputs.candidate_ref }}
+        run: |
+          if [[ -n "$CANDIDATE" && ! "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::candidate_ref must be a full commit SHA"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # github.sha is the synthetic merge commit on pull_request, not head.sha.
+          ref: ${{ inputs.candidate_ref || github.sha }}
           persist-credentials: false
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Build the tools image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: tools
-          file: tools/docker/Dockerfile
-          platforms: linux/amd64
-          tags: mhgurecomp-builder:ci
-          load: true
-          cache-from: type=gha,scope=linux-builder-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=linux-builder-${{ matrix.arch }}
-      - name: Check scripts
+      - name: Record the exact checked-out source
+        id: source
+        env:
+          CANDIDATE: ${{ inputs.candidate_ref }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          sha=$(git rev-parse HEAD)
+          expected=${CANDIDATE:-$EVENT_SHA}
+          [[ "$sha" == "$expected" ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          publish=false
+          if [[ -z "$CANDIDATE" && "$REF" == refs/heads/master &&
+                "$REPOSITORY" == pablovesnine/MHGURecomp &&
+                ( "$EVENT" == push || "$EVENT" == workflow_dispatch ) ]]; then
+            publish=true
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+      - name: Lint shell, workflows and Python regressions
         run: |
           bash -n tools/build-linux-release.sh tools/docker/*.sh
           shellcheck tools/build-linux-release.sh tools/docker/*.sh
-      - name: Build and test without a dump
-        env:
-          TARGET_ARCH: ${{ matrix.arch }}
-        run: |
-          bash tools/build-linux-release.sh --check "$TARGET_ARCH" \
-            --version 0 --jobs 2 --image mhgurecomp-builder:ci \
-            --skip-image-build
-      - name: Show disk use
-        if: always()
-        run: df -h .
-
-  publish:
-    name: Publish the tools image
-    needs: check
-    if: >-
-      github.event_name != 'pull_request' &&
-      (github.ref == 'refs/heads/master' ||
-       github.ref == 'refs/heads/linux-arm64-0118')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            -o "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" |
+            sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color .github/workflows/*.yml
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Set image names
-        id: names
-        env:
-          OWNER: ${{ github.repository_owner }}
-          REVISION: ${{ github.sha }}
-        run: |
-          image="ghcr.io/${OWNER,,}/mhgurecomp-builder"
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push the tools image
+      - name: Build the tools image once
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: tools
           file: tools/docker/Dockerfile
           platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ steps.names.outputs.image }}:${{ steps.names.outputs.revision }}
-            ${{ steps.names.outputs.image }}:linux-amd64
+          build-args: |
+            SOURCE_REVISION=${{ steps.source.outputs.sha }}
+          tags: mhgurecomp-builder:ci
+          load: true
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: |
-            type=gha,scope=linux-builder-x86_64
-            type=gha,scope=linux-builder-aarch64
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+          cache-from: type=gha,scope=linux-arm64-tools
+          cache-to: type=gha,mode=max,scope=linux-arm64-tools
+      - name: Mandatory public runtime and ARM64 QEMU tests
+        run: |
+          bash tools/build-linux-release.sh --check --version 0 --jobs 2 \
+            --image mhgurecomp-builder:ci --skip-image-build
+      - name: Save only the tested tools image
+        if: steps.source.outputs.publish == 'true'
+        id: image
+        run: |
+          echo "id=$(docker image inspect mhgurecomp-builder:ci --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
+          docker image save mhgurecomp-builder:ci | gzip > "$RUNNER_TEMP/tools-image.tar.gz"
+      - name: Transport the tested image (no game outputs)
+        if: steps.source.outputs.publish == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-tools-${{ steps.source.outputs.sha }}
+          path: ${{ runner.temp }}/tools-image.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Show disk use
+        if: always()
+        run: df -h .
