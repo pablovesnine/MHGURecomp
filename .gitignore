@@ -1,14 +1,21 @@
-# Nothing from the game may be committed: no game files, no generated code, no extracted data.
+# Private game inputs and generated/local outputs.
 /generated/
 /build/
 /obj/
 /build-linux/
 /obj-linux/
+/build-arm64/
+/obj-arm64/
 /run/
+/run2/
+/run3/
 /game/
 /save/
 /mods/
 /data/
+/.linux-release/
+/dist/
+/build-arm64*.log
 tools/venv/
 __pycache__/
 *.pyc
@@ -20,18 +27,6 @@ __pycache__/
 *.rar
 *.zip
 *.7z
-/run2/
-/run3/
 /third_party/ffmpeg/
 /third_party/sdl3/
 /third_party/shaderc/
-/dist/
-
-# the hub server built in place (server/README.md)
-server/mhgurecomp-hubserver
-server/mhgurecomp-hubserver.exe
-/build-android/
-/obj-android/
-
-# Private container work must never enter a commit or build context.
-/.linux-release/

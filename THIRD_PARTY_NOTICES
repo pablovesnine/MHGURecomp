@@ -18,10 +18,10 @@ below.
   and links a small part of it (MP4, H.264, AAC) into the executable: LGPL 2.1 or later. The build puts the license,
   with where the source is, in build/licenses/FFmpeg.txt.
 
-Libraries the program uses that are not part of this repository (SDL3, shaderc, the Vulkan loader, and on Windows
-the GCC runtime linked in) keep their own licenses. The Windows build collects those of everything it ships or links
-in into build/licenses (README.txt there lists each with its version and source); the Vulkan loader is the GPU
-driver's and is not shipped.
+Libraries the program uses that are not part of this repository (SDL3,
+shaderc and the Vulkan loader) keep their own licenses. The build collects
+licenses for bundled dependencies in build/licenses. The Vulkan loader is
+provided by the device's graphics stack and is not shipped.
 
 
 ================================================================================

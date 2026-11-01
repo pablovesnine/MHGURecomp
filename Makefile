@@ -46,8 +46,6 @@ FFMPEG_CONF   := --disable-everything --disable-programs --disable-doc --disable
                  --disable-debug --disable-avdevice --disable-avfilter --disable-swscale --disable-swresample \
                  --enable-static --disable-shared --enable-protocol=file --enable-demuxer=mov \
                  --enable-parser=h264,aac --enable-decoder=h264,aac
-# (nasm: FFmpeg's assembly for x86; without it the plain C versions, fast enough for 960x540 movies)
-FFMPEG_CONF   += $(if $(shell command -v nasm 2>/dev/null),,--disable-x86asm)
 FFMPEG_CONF   += $(FFMPEG_TARGET_FLAGS)
 FFMPEG_CC      = $(CC) $(TARGET_FLAGS)
 ifeq ($(FFMPEG),system)
@@ -59,11 +57,11 @@ AV_LIBS  :=
 endif
 
 # SDL3 and shaderc (Linux): by default static builds of pinned releases, made here from their sources like FFmpeg
-# (downloaded once to third_party/, checked against their SHA-256), the versions MSYS2 has for the Windows build. Not
+# (downloaded once to third_party/, checked against their SHA-256). Not
 # every distribution has them (Ubuntu 24.04 / Linux Mint 22: no SDL3), and a distribution's own can need a newer glibc
 # than GLIBC_MAX. SDL still loads X11, Wayland, libdecor, PipeWire / PulseAudio / ALSA, udev... from the system when
 # it runs, as its shared library does. Needs cmake. SDL3=system / SHADERC=system link the system's libSDL3.so.0 /
-# libshaderc_shared.so.1 instead. (Windows: always MSYS2's, their DLLs bundled.)
+# libshaderc_shared.so.1 instead.
 SDL3          ?= bundled
 SHADERC       ?= bundled
 SDL3_VER      := 3.4.18
@@ -150,8 +148,7 @@ IMGUI_OBJ := $(patsubst $(IMGUI)/%.cpp,$(O)/imgui/%.o,$(IMGUI_SRC))
 # system ImGui (MangoHud -> libimgui.so.1) binds its HUD's calls into ours: its 1.91 ImFontAtlas handed to our 1.92
 # code crashes at swap-chain creation. Our own code and the Forge plugins' ImGui thunks bind inside the executable.)
 IMGUIFLAGS := -O2 -g -fvisibility=hidden -DCIMGUI_NO_EXPORT -I$(IMGUI) -I$(IMGUI)/imgui $(LIB_INC)
-# (vendored VulkanMemoryAllocator fallback: -I on a missing dir is ignored, so MSYS2 builds
-# with the system vulkan-memory-allocator package are unaffected)
+# VulkanMemoryAllocator is vendored for the isolated tools build.
 RTFLAGS  := -O2 -g -fno-strict-aliasing -Wall -Wno-unused-function -Iruntime -Ithird_party/vk_mem_alloc -I$(IMGUI) $(OSFLAGS) $(LIB_INC)
 # FSR 3.1 temporal upscaler (runtime/nvn/vulkan/fsr.c): third_party/fsr-vulkan = AMD FidelityFX SDK 1.1.4's FSR 3.1.4
 # upscaler (host scheduler, Vulkan backend, its GLSL) + a portable C wrapper, all MIT. No AMD binaries: the shaders are
@@ -189,8 +186,8 @@ all: $(EXE) $(if $(GEN_SRC),$(GAMELIB)) licenses pipelist
 .PHONY: test-settings
 test-settings: $(LIB_STAMPS)
 	@mkdir -p $(O)/settings-test
-	$(CC) $(TARGET_FLAGS) $(if $(filter aarch64,$(TARGET_ARCH)),-fuse-ld=lld) $(RTFLAGS) tests/test_settings.c runtime/config.c runtime/config_store.c $(SDL_LIBS) -lm -o $(O)/settings-test/test-settings$(if $(filter windows,$(PLATFORM)),.exe)
-	$(TEST_RUNNER) $(O)/settings-test/test-settings$(if $(filter windows,$(PLATFORM)),.exe) $(O)/settings-test/settings.ini
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(RTFLAGS) tests/test_settings.c runtime/config.c runtime/config_store.c $(SDL_LIBS) -lm -o $(O)/settings-test/test-settings
+	$(TEST_RUNNER) $(O)/settings-test/test-settings $(O)/settings-test/settings.ini
 
 $(O)/gen/%.o: $(GEN)/%.c runtime/cpu.h runtime/vfp.h runtime/neon_rt.h
 	@mkdir -p $(dir $@)
@@ -244,7 +241,7 @@ $(O)/fsr/%.c.o: $(FSR)/%.c
 
 $(O)/fsr/%.cpp.o: $(FSR)/%.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(TARGET_FLAGS) -std=c++17 $(FSRFLAGS) -include $(FSR)/src/$(if $(filter windows,$(PLATFORM)),ffx_mingw_portability.hpp,ffx_1_1_4_portability.hpp) -c $< -o $@
+	$(CXX) $(TARGET_FLAGS) -std=c++17 $(FSRFLAGS) -include $(FSR)/src/ffx_1_1_4_portability.hpp -c $< -o $@
 
 $(EXE): $(RT_OBJ) $(AV_DEPS)
 	@mkdir -p $(dir $@)
@@ -337,8 +334,7 @@ endif
 
 # The licenses a copy of the game folder must carry, in $(B)/licenses: this program's own (LICENSE) and its
 # THIRD_PARTY_NOTICES (code compiled in: LAS Recomp, Dear ImGui, cimgui, VulkanMemoryAllocator), FFmpeg's LGPL (in the
-# executable), on Linux SDL3's and shaderc's (in the programs), and on Windows those of the MSYS2 packages behind the DLLs bundled and the libraries linked in
-# (bundle: tools/bundle_dlls.py, which lists them all with their versions and sources in licenses/README.txt).
+# executable), and SDL3's and shaderc's (in the programs).
 # The pipelines recorded in the common areas (extras/pipelines.list: the game's shader code hashes and render state,
 # nothing of the game itself), built in the background on a first run: runtime/nvn/vulkan/exec.c "pipeline list"
 pipelist: $(B)/pipelines.list
@@ -357,7 +353,7 @@ $(B)/licenses/FFmpeg.txt: $(FFMPEG_DIR)/.built
 	@{ echo "This program contains FFmpeg $(FFMPEG_VER) (libavformat, libavcodec, libavutil), linked statically, under the"; \
 	   echo "GNU Lesser General Public License 2.1 or later (below). Its source code is the release at"; \
 	   echo "https://ffmpeg.org/releases/ffmpeg-$(FFMPEG_VER).tar.xz, built with the options in this program's Makefile (FFMPEG_CONF);"; \
-	   echo "the program's own source is at https://github.com/morerokk/MHGURecomp, to rebuild it with a changed FFmpeg."; \
+	   echo "the program's own source is at https://github.com/pablovesnine/MHGURecomp, to rebuild it with a changed FFmpeg."; \
 	   echo; cat $(FFMPEG_DIR)/src/COPYING.LGPLv2.1; } > $@
 
 $(B)/licenses/SDL3.txt: $(SDL3_DIR)/.built
@@ -379,7 +375,7 @@ $(GAMELIB): $(GEN_OBJ) | $(EXE)
 	$(CC) $(TARGET_FLAGS) $(GAMELIB_LDFLAGS) -o $(O)/gamelib.tmp $^
 	mv -f $(O)/gamelib.tmp $@
 
-PY := $(firstword $(wildcard tools/venv/Scripts/python.exe) $(wildcard tools/venv/bin/python) python3)
+PY := $(firstword $(wildcard tools/venv/bin/python) python3)
 
 # Explicit convenience target only; Docker never copies the dump into the build.
 data: $(B)/data/.complete
@@ -423,8 +419,8 @@ dist:
 .PHONY: test-settings-panel
 test-settings-panel: $(O)/rt/settings_panel.o $(O)/rt/modorder.o $(O)/rt/arcmerge.o $(O)/rt/config.o $(O)/rt/config_store.o $(O)/imgui/imgui/imgui.o $(O)/imgui/imgui/imgui_draw.o $(O)/imgui/imgui/imgui_tables.o $(O)/imgui/imgui/imgui_widgets.o $(LIB_STAMPS)
 	@mkdir -p $(O)/settings-test
-	$(CXX) $(TARGET_FLAGS) $(if $(filter aarch64,$(TARGET_ARCH)),-fuse-ld=lld) $(IMGUIFLAGS) -Iruntime tests/test_settings_panel.cpp $(filter %.o,$^) $(SDL_LIBS) -o $(O)/settings-test/test-settings-panel$(if $(filter windows,$(PLATFORM)),.exe)
-	$(TEST_RUNNER) $(O)/settings-test/test-settings-panel$(if $(filter windows,$(PLATFORM)),.exe)
+	$(CXX) $(TARGET_FLAGS) -fuse-ld=lld $(IMGUIFLAGS) -Iruntime tests/test_settings_panel.cpp $(filter %.o,$^) $(SDL_LIBS) -o $(O)/settings-test/test-settings-panel
+	$(TEST_RUNNER) $(O)/settings-test/test-settings-panel
 
 # Translation coverage for both host-menu languages; no game files required.
 .PHONY: test-settings-locale

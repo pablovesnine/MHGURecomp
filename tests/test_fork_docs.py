@@ -50,8 +50,13 @@ class ForkDocumentationTests(unittest.TestCase):
     def test_single_supported_build_entry(self):
         readme = (ROOT / "README.md").read_text()
         self.assertIn("pablovesnine/MHGURecomp.git", readme)
-        self.assertIn("--check --version 0 --jobs 2", readme)
-        self.assertIn("--rebuild-image", readme)
+        self.assertIn("update-build-arm64.sh", readme)
+        self.assertLessEqual(len(readme.splitlines()), 70)
+        self.assertIn("Docker", readme)
+        self.assertIn("1.4.0", readme)
+        self.assertIn("morerokk/MHGURecomp", readme)
+        for platform in ("x86", "x64", "amd64", "windows", "android", "msys"):
+            self.assertNotIn(platform, readme.lower())
         self.assertNotIn("BUILD-LINUX-MANUAL", readme)
         self.assertNotIn("BUILD-LINUX-DOCKER", readme)
         self.assertNotIn("mhgurecomp-updater.exe", readme)
@@ -71,6 +76,12 @@ class ForkDocumentationTests(unittest.TestCase):
             "android/android.mk", "android/apk.mk", "android/apk.py",
             "android/AndroidManifest.xml", "run-game.bat", "run-debug.bat",
             "docs/BUILD-LINUX-MANUAL.md", "docs/BUILD-LINUX-DOCKER.md",
+            "runtime/platform/android.c", "runtime/platform/windows.c",
+            "tools/bundle_dlls.py", "server", "extras/cheats",
+            "updater/arch.h", "updater/archive.c", "updater/http.c",
+            "updater/json.c", "updater/updater.c", "tests/test_update_arch.c",
+            "docs/research", "docs/STATUS.md", "docs/FSR-PORT.md",
+            "docs/SWITCH_COMPARE.md", "docs/PIPELINE_LIST.md",
         ):
             with self.subTest(path=relative):
                 self.assertFalse((ROOT / relative).exists())
