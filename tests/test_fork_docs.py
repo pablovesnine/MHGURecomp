@@ -1,6 +1,7 @@
 """Validate maintained fork documentation without game data or network."""
 
 from pathlib import Path
+import configparser
 import hashlib
 import re
 import unittest
@@ -96,7 +97,9 @@ class ForkDocumentationTests(unittest.TestCase):
         # Validate paths mentioned in prose, not scripts/commands or hypothetical outputs.
         for relative in DOCUMENTS:
             text = (ROOT / relative).read_text()
-            for path in re.findall(r"`((?:\.github|tools|runtime|updater|tests)/[\w./-]+)`", text):
+            for path in re.findall(
+                    r"`((?:\.github|docs|tools|runtime|updater|tests|extras)/[\w./-]+)`",
+                    text):
                 with self.subTest(document=relative, path=path):
                     self.assertTrue((ROOT / path).exists(), f"Stale documented path: {path}")
         maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
@@ -107,6 +110,58 @@ class ForkDocumentationTests(unittest.TestCase):
                      "linux-publisher.yml", "upstream-sync.yml"):
             self.assertIn(f".github/workflows/{name}", maintaining)
         self.assertNotIn("`tools/vkreplay.c`", maintaining)
+
+    def test_custom_server_controls_match_runtime_and_documentation(self):
+        config = (ROOT / "runtime/config.c").read_text()
+        menu = (ROOT / "runtime/settings_panel.cpp").read_text()
+        network = (ROOT / "runtime/net/ldn.c").read_text()
+        guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
+        for key, label, restart in (
+            ("Server", "Hub server", "false"),
+            ("Key", "Matchmaking key", "false"),
+            ("Join", "Search hosts", "true"),
+            ("Port", "Host port (TCP / UDP)", "true"),
+        ):
+            with self.subTest(key=key):
+                self.assertRegex(
+                    config, rf'\{{"Multiplayer", "{key}",[^\n]*'
+                    rf', {restart}, ERR_')
+                self.assertIn(f'"{label}"', menu)
+                self.assertIn(f"**{label}**", guide)
+        hub_port = re.search(r"#define LOBBY_PORT (\d+)", network).group(1)
+        self.assertIn(hub_port, guide)
+        self.assertIn("39500", guide)
+        self.assertIn("IPv4", guide)
+        self.assertIn("## Custom hub server", guide)
+        self.assertIn("**Save**", guide)
+
+    def test_custom_server_example_does_not_claim_to_bundle_a_server(self):
+        readme = (ROOT / "README.md").read_text()
+        guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
+        example = re.search(r"```ini\n(\[Multiplayer\][^`]+)```", guide)
+        self.assertIsNotNone(example)
+        config = configparser.ConfigParser()
+        config.optionxform = str
+        config.read_string(example.group(1))
+        self.assertEqual(config.sections(), ["Multiplayer"])
+        self.assertEqual(dict(config["Multiplayer"]), {
+            "Server": "hub.example.org:39510",
+            "Key": "my-private-group",
+        })
+        self.assertIn("Network > Hub server", readme)
+        self.assertIn("not include a dedicated hub server", readme)
+        self.assertIn(
+            "https://github.com/morerokk/MHGURecomp/tree/"
+            "b3746e800b7435dee696e44b84b054a642f600df/server", guide)
+
+    def test_readme_distinguishes_features_from_unshipped_resources(self):
+        readme = (ROOT / "README.md").read_text()
+        self.assertIn("empty `bonus/` directory", readme)
+        self.assertIn("not include a bonus save", readme)
+        self.assertIn("Updates", readme)
+        self.assertIn("does not download or install updates", readme)
+        self.assertNotIn("extras/cheats/", readme.replace("\\", "/"))
+        self.assertNotRegex(readme, r"`[^`\n]*\\[^`\n]*`")
 
     def test_bug_report_requests_package_and_source_provenance(self):
         template = (ROOT / ".github/ISSUE_TEMPLATE/bug_report.yml").read_text()

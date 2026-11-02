@@ -41,7 +41,7 @@ INI saves are atomic: a failed configuration write keeps the previous file and t
 
 **Restart** explicitly confirms, saves settings, then restarts. **Exit game** offers Save and exit or Exit without saving if changes or uncommitted text are pending. Disabling Confirm exit skips the ordinary exit confirmation only when there are no pending changes.
 
-The inherited **Updates** option is retained for configuration compatibility. I do not build or ship a binary updater; this option does not download or install updates.
+The inherited **Updates** option is retained for configuration compatibility. I do not build or ship a binary updater; this option does not download or install updates, despite the inherited INI help. Follow [manual updates](../README.md#manual-updates) instead.
 
 ## Host confirmation button
 
@@ -53,6 +53,31 @@ This setting affects only host settings navigation and confirmations. It does **
 
 **Graphics & Audio** exposes all six `[Upscaler]` fields: FSR, quality, sharpness, object motion, reactive mask and animated surfaces. Enable FSR in the draft to expose its other controls. All six are restart-only and participate in Save, unsaved-change checks and Reset this tab.
 
+This is FSR 3.1 temporal upscaling, not frame generation. Vulkan 1.2 alone is not sufficient: the GPU needs the FSR compute/storage capabilities checked by the renderer. If those checks fail, the log reports FSR disabled and the image may remain scaled from the reduced render resolution. Object-motion support has its own GPU checks and can fall back to camera motion only.
+
 While FSR is active in the running configuration, it keeps MSAA at 1 (off) and FXAA off, even after saving unrelated settings or staging FSR Off for the next restart. The AA rows show **Off (FSR)** while the draft also has FSR enabled. Stored AA preferences are retained for use after FSR is disabled and the game restarts.
+
+## Custom hub server
+
+The ARM64 client supports the upstream hub protocol. Open the **Network** tab to configure it:
+
+- **Hub server** maps to `[Multiplayer] Server`. Leave it empty for the built-in default, `morerokk-mhgurecomp-ldnserver.duckdns.org`. Enter a hostname or IPv4 address, optionally followed by `:port`, to use another compatible hub. The default hub port is **39510**, not the game's direct-host port. `Off` disables internet hub discovery and relay.
+- **Matchmaking key** maps to `[Multiplayer] Key`. Leave it empty for public listings. Online players who want the same private-group listings must choose the same server and key. The key separates listings; it is not an authentication or encryption guarantee.
+- **Check hub server** checks the draft server and key, showing response time and the number of listed hubs. It does not save those values or prove that a complete multiplayer session will work.
+- **Host port (TCP / UDP)** maps to `[Multiplayer] Port`, default **39500**. **Search hosts** maps to `[Multiplayer] Join`, a comma-separated list of direct hosts, each optionally using `host:port`. These are separate from the hub address and carry restart markers.
+
+Leave your current game hub before changing servers or groups. **Server** and **Key** apply on **Save** for the next search, join or connection to the hub server; no game restart is required for those two settings. **Port** and **Join** require a game restart. An unreachable hub leaves LAN and configured direct-host discovery available.
+
+Alternatively, close the game and edit `mhgurecomp.ini`. This example selects a custom hub and group; replace the example address with a server you can actually use:
+
+```ini
+[Multiplayer]
+Server = hub.example.org:39510
+Key = my-private-group
+```
+
+Internet play through a hub relays connections, so players do not need to forward their own game ports. Direct internet play without a hub needs a reachable host: forward the host's chosen game port for TCP and UDP, then put its public address in the joining players' **Search hosts** field. LAN discovery does not need an internet hub.
+
+I do not include a dedicated hub server in this repository or ARM64 package. To operate one separately, use the [upstream 0.13.1 server instructions](https://github.com/morerokk/MHGURecomp/tree/b3746e800b7435dee696e44b84b054a642f600df/server). The server operator must make its chosen hub port reachable for TCP and UDP; that is distinct from players forwarding game ports. Use compatible client/server protocols. I have not validated a self-hosted server deployment on the ARM64 device.
 
 For installation and troubleshooting, see [ARM64 device requirements](BUILD-LINUX-ARM64.md).
