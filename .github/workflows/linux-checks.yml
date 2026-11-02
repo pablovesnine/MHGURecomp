@@ -1,0 +1,43 @@
+name: Linux fork quick checks
+
+on:
+  workflow_call:
+    inputs:
+      candidate_ref:
+        description: Exact candidate commit SHA; empty for the event revision
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  quick:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Require exact candidate SHA
+        env:
+          CANDIDATE: ${{ inputs.candidate_ref }}
+        run: |
+          if [[ -n "$CANDIDATE" && ! "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::candidate_ref must be a full commit SHA"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+      - name: Lint shell, workflows and offline regressions
+        run: |
+          bash -n tools/build-linux-release.sh tools/upstream-version.sh tools/docker/*.sh
+          shellcheck tools/build-linux-release.sh tools/upstream-version.sh tools/docker/*.sh
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            -o "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" |
+            sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color .github/workflows/*.yml
+          python3 -m unittest discover -s tests -p 'test_*.py' -v

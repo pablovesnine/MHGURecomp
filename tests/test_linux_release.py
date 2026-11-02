@@ -84,6 +84,7 @@ class InterfaceTests(unittest.TestCase):
         subprocess.run(["git", "clone", "--bare", str(self.repo), str(self.upstream)],
                        check=True, capture_output=True)
         self.git("--git-dir=" + str(self.upstream), "tag", "0.12.0")
+        self.pin_version("0.12.0")
         self.git("config", f"url.{self.upstream}.insteadOf",
                  "https://github.com/morerokk/MHGURecomp.git")
         self.game = self.root / "private dump fixture"
@@ -108,6 +109,24 @@ class InterfaceTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.run(["git", *args], cwd=self.repo, check=True,
                               capture_output=True, text=True)
+
+    def pin_version(self, version):
+        oid = self.git("--git-dir=" + str(self.upstream), "rev-parse",
+                       "refs/tags/" + version).stdout.strip()
+        base = self.git("rev-parse", "HEAD").stdout.strip()
+        state = {
+            "schema": "1", "algorithm": "release-base-v1",
+            "repository": "morerokk/MHGURecomp", "release_id": "1",
+            "version": version, "tag": version, "tag_oid": oid, "commit": oid,
+            "published_at": "2026-01-01T00:00:00Z", "fork_base": base,
+            "migration_merge": base, "migration_source": base,
+        }
+        (self.repo / "tools/upstream-release.tsv").write_text(
+            "".join(key + "\t" + value + "\n" for key, value in state.items()))
+        self.git("add", "tools/upstream-release.tsv")
+        self.git("-c", "user.name=Test Fixture",
+                 "-c", "user.email=fixture@example.invalid",
+                 "commit", "-qm", "Pin fixture stable release " + version)
 
     def run_script(self, *args):
         return subprocess.run(
@@ -195,6 +214,7 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual(self.release().returncode, 0)
         self.assertEqual(self.release("--jobs", "3").returncode, 0)
         self.git("--git-dir=" + str(self.upstream), "tag", "0.13.1")
+        self.pin_version("0.13.1")
         self.assertEqual(self.release("--version", "0.13.1").returncode, 0)
         self.assertEqual(len(list((self.repo / ".linux-release").glob("*/src"))), 3)
 
@@ -203,6 +223,12 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.run_command()[-5:-3], ["release", "0.12.0"])
         self.assertIn("LinuxARM64-MHGURecomp.0.12.0.tar.gz", result.stdout)
+
+    def test_new_tag_without_pinned_release_does_not_change_build_version(self):
+        self.git("--git-dir=" + str(self.upstream), "tag", "99.0")
+        result = self.run_script("--game", str(self.game))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.run_command()[-5:-3], ["release", "0.12.0"])
 
     def test_overrides_must_match_upstream_before_engine(self):
         for version in ("1", "20261101235959", "0.12.0-test"):

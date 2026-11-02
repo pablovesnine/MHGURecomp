@@ -29,6 +29,8 @@ class WorkflowTests(unittest.TestCase):
         cls.ci = (ROOT / ".github/workflows/linux-ci.yml").read_text()
         cls.sync = (ROOT / ".github/workflows/upstream-sync.yml").read_text()
         cls.publisher = (ROOT / ".github/workflows/linux-publisher.yml").read_text()
+        checks = ROOT / ".github/workflows/linux-checks.yml"
+        cls.checks = checks.read_text() if checks.exists() else ""
 
     def test_external_actions_immutable(self):
         for path in (ROOT / ".github/workflows").glob("*.yml"):
@@ -50,14 +52,31 @@ class WorkflowTests(unittest.TestCase):
 
     def test_mandatory_lint_runtime_qemu(self):
         self.assertIn("shellcheck tools/build-linux-release.sh tools/upstream-version.sh",
-                      self.builder)
+                      self.checks)
         for text in ("runs-on: ubuntu-24.04", "timeout-minutes: 60",
-                     "--check --version 0 --jobs 2", "shellcheck tools/build-linux-release.sh",
-                     "actionlint", "unittest discover", "platforms: linux/amd64",
+                     "--check --version 0 --jobs 2", "platforms: linux/amd64",
                      "SOURCE_REVISION=${{ steps.source.outputs.sha }}"):
             self.assertIn(text, self.builder)
+        for text in ("actionlint", "unittest discover", "persist-credentials: false",
+                     "workflow_call:", "candidate_ref:"):
+            self.assertIn(text, self.checks)
+        self.assertIn("needs: quick", job(self.builder, "check"))
+        self.assertIn("uses: ./.github/workflows/linux-checks.yml",
+                      job(self.builder, "quick"))
         self.assertNotIn("|| true", self.builder)
         self.assertNotIn("matrix:", self.builder)
+
+    def test_ordinary_changes_never_trigger_full_validation(self):
+        self.assertIn("uses: ./.github/workflows/linux-checks.yml",
+                      job(self.ci, "quick"))
+        self.assertIn("if: github.event_name == 'workflow_dispatch'",
+                      job(self.ci, "validate"))
+        self.assertNotRegex(self.checks, r"(?m)^\s+docker\s")
+        self.assertNotIn("docker/build-push-action", self.checks)
+        self.assertNotRegex(self.checks, r"(?m)^\s+qemu-\S+\s")
+        self.assertIn("github.event_name == 'workflow_dispatch'",
+                      job(self.ci, "publish"))
+        self.assertNotIn("github.event_name == 'push'", job(self.ci, "publish"))
 
     def test_no_pr_and_explicit_validation_publication(self):
         self.assertIn("'23 */6 * * *'", self.sync)
@@ -257,7 +276,8 @@ class ApiTests(unittest.TestCase):
         args = Namespace(repo=".", cleanup_legacy=False, retry=False)
         with patch.object(sync, "SyncGit") as factory, \
                 patch.object(sync, "issue_state", return_value={"key": "k", "state": "blocked"}), \
-                patch.object(sync, "write_outputs") as outputs:
+                patch.object(sync, "write_outputs") as outputs, \
+                patch("builtins.print"):
             git = factory.return_value
             git.context.return_value = {"base": "a" * 40, "upstream": "b" * 40,
                                         "policy": "c" * 64, "key": "k", "previous": None}

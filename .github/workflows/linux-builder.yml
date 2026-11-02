@@ -30,7 +30,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  quick:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/linux-checks.yml
+    with:
+      candidate_ref: ${{ inputs.candidate_ref }}
+
   check:
+    needs: quick
     name: AArch64 without game data (amd64 host)
     # Bot candidates are tested by upstream-sync's explicit reusable call,
     # not by a token-generated PR event (which may await approval).
@@ -80,18 +88,6 @@ jobs:
             publish=true
           fi
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
-      - name: Lint shell, workflows and Python regressions
-        run: |
-          bash -n tools/build-linux-release.sh tools/upstream-version.sh tools/docker/*.sh
-          shellcheck tools/build-linux-release.sh tools/upstream-version.sh tools/docker/*.sh
-          curl --fail --location --silent --show-error --retry 3 \
-            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
-            -o "$RUNNER_TEMP/actionlint.tar.gz"
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" |
-            sha256sum --check -
-          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint" -color .github/workflows/*.yml
-          python3 -m unittest discover -s tests -p 'test_*.py' -v
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build the tools image once
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0

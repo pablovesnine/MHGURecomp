@@ -11,6 +11,18 @@ Maintainer-built ARM64 packages, when available, are published in
 Download a package and follow [Install](#install); cloning is not required.
 To build your own package instead, follow the steps below.
 
+## Maintainer screenshots
+
+The previous maintainer build was tested on **AYN Odin 3** with
+[ArmadaOS 20261010](https://github.com/armada-os/armada): the maintainer reports
+**120 FPS in Eco mode**, working online multiplayer, and morerokk's custom menu
+with all its features working. This newly aligned 0.13.1 revision is not yet device-tested.
+The screenshots show that earlier build; the menu's 120 FPS limit is not a benchmark.
+
+![MHGU gameplay on AYN Odin 3](docs/screenshots/ayn-odin3-gameplay.jpg)
+![Online multiplayer lobby list](docs/screenshots/ayn-odin3-online.jpg)
+![morerokk's custom settings menu](docs/screenshots/ayn-odin3-menu.jpg)
+
 ## Build
 
 Build on a **Linux x86-64 PC** with Git and working local Docker;
@@ -50,8 +62,8 @@ working Docker/Moby installation. Run these commands as your normal user.
    ```
 
 Output: `dist/LinuxARM64-MHGURecomp.<version>.tar.gz` and `dist/SHA256SUMS`.
-The version is the highest numeric upstream tag incorporated into your
-checkout, without a fork suffix. Inspect it with `bash tools/upstream-version.sh`.
+The version is the stable upstream release pinned in this checkout, without a
+fork suffix. Inspect it with `bash tools/upstream-version.sh`.
 Release builds need network access to verify upstream tags and full Git history.
 Between releases the version stays unchanged; the exact source SHA is recorded
 inside the archive. No dump or package is uploaded automatically.
@@ -70,10 +82,11 @@ Back up saves before testing an update.
 
 ## Maintenance
 
-Upstream is checked every six hours. Compatible changes enter `master`
-automatically only after public ARM64 checks pass. Fork build rules and
-retired files are protected. Unexpected conflicts produce one tracking issue.
-Only `master` is permanent. CI never receives game files.
+Published stable upstream releases are checked every six hours; prereleases,
+drafts and standalone tags are excluded. Compatible releases enter `master`
+only after full ARM64 validation. Normal fork edits run quick checks; full
+Docker/QEMU validation is otherwise manual. Protected files stay protected;
+conflicts stop integration. Only `master` is permanent. CI never receives game files.
 
 [Maintenance](docs/MAINTAINING.md) ·
 [Device requirements and troubleshooting](docs/BUILD-LINUX-ARM64.md) ·

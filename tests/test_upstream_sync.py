@@ -1,5 +1,6 @@
 """Real Git fixtures: no network, credentials, game data or GitHub writes."""
 import importlib.util
+import copy
 import json
 from pathlib import Path
 import subprocess
@@ -32,16 +33,29 @@ class SyncTests(unittest.TestCase):
         self.commit("runtime/platform/android.c", "old Android\n")
         self.commit("tools/fork-policy.json", json.dumps({
             "version": 1,
-            "keep": {"files": ["README.md", "tools/fork-policy.json"], "prefixes": [".github/"]},
+            "keep": {"files": ["README.md", "tools/fork-policy.json", "tools/upstream-release.tsv"], "prefixes": [".github/"]},
             "remove": {"files": ["runtime/platform/android.c"], "prefixes": ["android/"]},
             "shared": {"files": ["common", "fork", "upstream", "human"], "prefixes": ["runtime/"]},
         }))
         self.git(self.writer, "remote", "add", "origin", str(self.origin))
         self.git(self.writer, "remote", "add", "upstream", str(self.upstream))
+        self.releases = []
+        tracked = self.publish()
+        self.initial = tracked
+        self.initial_state = {
+            "schema": "1", "algorithm": "release-base-v1", "repository": "morerokk/MHGURecomp",
+            "release_id": "1", "version": "1.0.0", "tag": "1.0.0",
+            "tag_oid": tracked, "commit": tracked, "published_at": "2026-01-01T00:00:00Z",
+            "fork_base": tracked, "migration_merge": tracked, "migration_source": tracked,
+        }
+        self.commit("tools/upstream-release.tsv", "".join(
+            key + "\t" + value + "\n" for key, value in self.initial_state.items()))
         self.git(self.writer, "push", "origin", "master")
-        self.git(self.writer, "push", "upstream", "master")
         self.git(self.root, "clone", str(self.origin), str(self.repo))
         self.git(self.repo, "remote", "add", "upstream", str(self.upstream))
+        api_mock = patch.object(sync, "api", side_effect=self.release_api)
+        api_mock.start()
+        self.addCleanup(api_mock.stop)
         self.worker = sync.SyncGit(self.repo)
         self.worker.refresh()
 
@@ -59,9 +73,30 @@ class SyncTests(unittest.TestCase):
         self.git(self.writer, "commit", "-m", "Human change " + file)
         return self.git(self.writer, "rev-parse", "HEAD")
 
+    def release_api(self, path, **kwargs):
+        if path == "releases?per_page=100":
+            self.assertEqual(kwargs.get("repository"), "morerokk/MHGURecomp")
+            self.assertTrue(kwargs.get("paginate"))
+            return copy.deepcopy(self.releases)
+        self.fail("Unexpected network/API request: " + path)
+
+    def publish(self, version=None, annotated=False):
+        number = len(self.releases) + 1
+        version = version or f"1.0.{number - 1}"
+        sha = self.git(self.writer, "rev-parse", "HEAD")
+        if annotated:
+            self.git(self.writer, "tag", "-a", version, "-m", "Stable release")
+        else:
+            self.git(self.writer, "tag", version)
+        self.git(self.writer, "push", "upstream", "master", f"refs/tags/{version}")
+        self.releases.append({"id": number, "tag_name": version, "draft": False,
+                              "prerelease": False, "published_at": f"2026-01-{number:02d}T00:00:00Z",
+                              "body": "Release notes", "target_commitish": "untrusted-moving-branch"})
+        return sha
+
     def upstream_change(self):
         sha = self.commit("upstream", "new\n")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         return sha
 
@@ -92,34 +127,33 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(first["sha"], second["sha"])
         self.assertFalse(second["changed"])
 
-    def test_master_advance_extends_candidate_without_reset(self):
+    def test_master_advance_preserves_and_blocks_stale_candidate(self):
         self.upstream_change()
         first = self.candidate()
         self.git(self.writer, "reset", "--hard", "HEAD~1")
         self.commit("fork", "later fork\n")
         self.git(self.writer, "push", "origin", "master")
         self.worker.refresh()
-        second = self.candidate()
-        self.assertNotEqual(first["sha"], second["sha"])
-        self.assertTrue(self.worker.ancestor(first["sha"], second["sha"]))
-        self.assertTrue(self.worker.ancestor("origin/master", second["sha"]))
+        with self.assertRaisesRegex(sync.Intervention, "stale|context"):
+            self.worker.prepare()
+        self.assertEqual(self.worker.remote_tip(sync.BRANCH), first["sha"])
 
-    def test_upstream_advance_extends_candidate(self):
+    def test_upstream_advance_preserves_and_blocks_stale_candidate(self):
         self.upstream_change()
         first = self.candidate()
         self.commit("upstream", "next\n")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
-        second = self.candidate()
-        self.assertTrue(self.worker.ancestor(first["sha"], second["sha"]))
-        self.assertTrue(self.worker.ancestor("upstream/master", second["sha"]))
+        with self.assertRaisesRegex(sync.Intervention, "stale|context"):
+            self.worker.prepare()
+        self.assertEqual(self.worker.remote_tip(sync.BRANCH), first["sha"])
 
     def test_conflict_does_not_publish_or_resolve(self):
         self.commit("common", "fork\n")
         self.git(self.writer, "push", "origin", "master")
         self.git(self.writer, "reset", "--hard", "HEAD~1")
         self.commit("common", "upstream\n")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         with self.assertRaisesRegex(sync.Intervention, "common"):
             self.worker.prepare()
@@ -141,9 +175,11 @@ class SyncTests(unittest.TestCase):
 
     def test_marker_without_bot_identity_is_rejected(self):
         self.upstream_change()
+        self.worker.context()
         self.git(self.repo, "checkout", "--detach", "origin/master")
         self.git(self.repo, "-c", "user.name=Human", "-c", "user.email=human@example.test",
-                 "merge", "--no-ff", "-m", sync.MARKER + " Merge upstream master", "upstream/master")
+                 "merge", "--no-ff", "-m", sync.MARKER + " Stable release 1.0.1",
+                 self.git(self.writer, "rev-parse", "HEAD"))
         self.git(self.repo, "push", "origin", f"HEAD:refs/heads/{sync.BRANCH}")
         self.worker.refresh()
         with self.assertRaisesRegex(sync.Intervention, "unrecognized"):
@@ -193,7 +229,7 @@ class SyncTests(unittest.TestCase):
         self.git(self.writer, "rm", "README.md")
         self.git(self.writer, "commit", "-m", "delete upstream readme")
         self.commit(".github/workflows/new.yml", "untrusted workflow")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         result = self.candidate()
         self.assertEqual(self.git(self.repo, "show", result["sha"] + ":README.md"),
@@ -203,7 +239,7 @@ class SyncTests(unittest.TestCase):
 
     def test_removed_prefix_cannot_resurrect_new_files(self):
         self.commit("android/new/evil.c", "never resurrect\n")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         result = self.candidate()
         self.assertEqual(self.git(self.repo, "ls-tree", "-r", "--name-only",
@@ -211,6 +247,8 @@ class SyncTests(unittest.TestCase):
 
     def test_real_fork_policy_never_reintroduces_personal_build_files(self):
         policy = json.loads((SCRIPT.parent / "fork-policy.json").read_text())
+        if "tools/upstream-release.tsv" not in policy["keep"]["files"]:
+            policy["keep"]["files"].append("tools/upstream-release.tsv")
         policy["shared"]["files"] += ["common", "fork", "upstream", "human"]
         self.commit("tools/fork-policy.json", json.dumps(policy))
         self.git(self.writer, "push", "origin", "master")
@@ -219,7 +257,7 @@ class SyncTests(unittest.TestCase):
                    "run-debug.bat", "run-game.bat")
         for path in retired:
             self.commit(path, "upstream attempts to add a retired personal entry\n")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         candidate = self.candidate()
         for path in retired:
@@ -232,7 +270,7 @@ class SyncTests(unittest.TestCase):
     def test_trusted_policy_not_upstream_policy(self):
         self.commit("tools/fork-policy.json", '{"version":999,"keep":{}}')
         self.commit(".github/new.yml", "untrusted")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         result = self.candidate()
         self.assertEqual(self.worker.policy_digest(result["base"]), result["policy"])
@@ -241,7 +279,7 @@ class SyncTests(unittest.TestCase):
 
     def test_unknown_new_path_blocks(self):
         self.commit("new-unclassified/code.c", "review first")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         with self.assertRaisesRegex(sync.Intervention, "Unclassified"):
             self.worker.prepare()
@@ -249,7 +287,7 @@ class SyncTests(unittest.TestCase):
 
     def test_unknown_new_bat_still_requires_policy_review(self):
         self.commit("new-launcher.bat", "unreviewed platform entry point\n")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         with self.assertRaisesRegex(sync.Intervention, "Unclassified"):
             self.worker.prepare()
@@ -296,7 +334,7 @@ class SyncTests(unittest.TestCase):
         self.git(self.writer, "push", "origin", "master")
         self.git(self.writer, "reset", "--hard", "HEAD~1")
         self.commit("runtime/platform/android.c", "upstream modified Android")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         candidate = self.candidate()
         self.assertEqual(self.git(self.repo, "ls-tree", candidate["sha"],
@@ -307,7 +345,7 @@ class SyncTests(unittest.TestCase):
         self.git(self.writer, "push", "origin", "master")
         self.git(self.writer, "reset", "--hard", "HEAD~1")
         self.commit("README.md", "upstream")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         candidate = self.candidate()
         self.assertEqual(self.git(self.repo, "show", candidate["sha"] + ":README.md"), "fork")
@@ -345,7 +383,7 @@ class SyncTests(unittest.TestCase):
         self.git(self.writer, "push", "origin", "master")
         self.git(self.writer, "reset", "--hard", "HEAD~1")
         self.commit(".github/workflows/*.yml", "malicious pathspec")
-        self.git(self.writer, "push", "upstream", "master")
+        self.publish()
         self.worker.refresh()
         candidate = self.candidate()
         self.assertEqual(self.git(self.repo, "show",

@@ -1,4 +1,4 @@
-name: Linux ARM64 CI and master tools publication
+name: Linux fork checks and manual ARM64 validation
 
 on:
   push:
@@ -11,12 +11,19 @@ permissions:
   contents: read
 
 jobs:
+  quick:
+    if: github.event_name != 'workflow_dispatch'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/linux-checks.yml
+
   validate:
+    if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
     uses: ./.github/workflows/linux-builder.yml
     with:
-      # Ordinary PRs test github.sha's synthetic merge commit.
+      # Full tools validation is explicit; ordinary changes use quick checks.
       candidate_ref: ''
 
   publish:
@@ -25,7 +32,7 @@ jobs:
       needs.validate.outputs.publish == 'true' &&
       github.repository == 'pablovesnine/MHGURecomp' &&
       github.ref == 'refs/heads/master' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       actions: read
