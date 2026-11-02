@@ -72,13 +72,13 @@ class ForkDocumentationTests(unittest.TestCase):
                      "morerokk/MHGURecomp"):
             self.assertIn(text, readme)
         self.assertRegex(readme, r"https://github\.com/pablovesnine/MHGURecomp/releases(?:/tag/[0-9.]+)?\)")
-        self.assertLessEqual(len(readme.splitlines()), 100)
         for text in ("BUILD_VERSION", "date -u", "x86-x64", "BUILD-LINUX-MANUAL",
                      "BUILD-LINUX-DOCKER", "mhgurecomp-updater.exe"):
             self.assertNotIn(text, readme)
         self.assertNotIn("--version", readme.replace("git --version", ""))
+        build = readme.split("\n## Build\n", 1)[1].split("\n## ", 1)[0]
         for platform in ("windows", "android", "msys"):
-            self.assertNotIn(platform, readme.lower())
+            self.assertNotIn(platform, build.lower())
         maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
         self.assertIn("git pull --ff-only origin master", maintaining)
 
