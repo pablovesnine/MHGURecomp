@@ -67,6 +67,77 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("|| true", self.builder)
         self.assertNotIn("matrix:", self.builder)
 
+    def test_private_context_and_nonroot_image_access_are_mandatory(self):
+        for contract in (
+            "name: Export private tracked tools context",
+            "id: context", "umask 077",
+            "git archive", "--no-same-permissions", "--no-same-owner",
+            "context: ${{ steps.context.outputs.path }}/tools",
+            "file: ${{ steps.context.outputs.path }}/tools/docker/Dockerfile",
+            "name: Verify tools access as an unprivileged user",
+            "--user 65534:65534", "--workdir /tmp", "--entrypoint bash",
+            "test -r /opt/mhgu/docker/build.sh",
+            "test -r /opt/mhgu/docker/check-elf.py",
+            "test -r /opt/mhgu/source-revision",
+            "test -r /opt/mhgu/host-packages.tsv",
+            "test -r /opt/mhgu/arm64-packages.tsv",
+        ):
+            self.assertIn(contract, self.builder)
+        self.assertLess(
+            self.builder.index("name: Export private tracked tools context"),
+            self.builder.index("name: Build the tools image once"))
+        self.assertLess(
+            self.builder.index("name: Verify tools access as an unprivileged user"),
+            self.builder.index("name: Mandatory public runtime and ARM64 QEMU tests"))
+
+    def test_private_context_export_runs_with_0600_inputs(self):
+        import os
+        import stat
+        import subprocess
+        match = re.search(
+            r"- name: Export private tracked tools context\n"
+            r"(?:(?!^      - ).)*?^        run: \|\n"
+            r"((?:^          [^\n]*\n|^\n)+)", self.builder, re.M | re.S)
+        self.assertIsNotNone(match)
+        script = textwrap.dedent(match.group(1))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "checkout"
+            (repo / "tools/docker").mkdir(parents=True)
+            for name in ("build.sh", "check-elf.py", "prepare-sysroot.sh",
+                         "normalize-sysroot.py"):
+                (repo / "tools/docker" / name).write_text(
+                    "# Public context fixture only.\n")
+            (repo / "tools/requirements.txt").write_text("public fixture\n")
+            (repo / "private.txt").write_text("must not enter image context\n")
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(["git", "-C", str(repo), "add", "tools"], check=True)
+            subprocess.run([
+                "git", "-C", str(repo), "-c", "user.name=Context Fixture",
+                "-c", "user.email=fixture@example.invalid",
+                "commit", "-qm", "Public context fixture",
+            ], check=True)
+            sha = subprocess.check_output(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+            runner = root / "runner temp"
+            runner.mkdir()
+            output = root / "outputs"
+            subprocess.run(
+                ["bash", "-euo", "pipefail", "-c", script], cwd=repo,
+                env=dict(os.environ, SOURCE_SHA=sha, RUNNER_TEMP=str(runner),
+                         GITHUB_OUTPUT=str(output)), check=True,
+                capture_output=True, text=True)
+            key, path = output.read_text().strip().split("=", 1)
+            self.assertEqual(key, "path")
+            context = Path(path)
+            self.assertEqual(stat.S_IMODE(context.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(
+                (context / "tools/docker").stat().st_mode), 0o700)
+            for relative in ("tools/docker/build.sh", "tools/requirements.txt"):
+                self.assertEqual(stat.S_IMODE(
+                    (context / relative).stat().st_mode), 0o600)
+            self.assertFalse((context / "private.txt").exists())
+
     def test_ordinary_changes_never_trigger_full_validation(self):
         self.assertIn("uses: ./.github/workflows/linux-checks.yml",
                       job(self.ci, "quick"))

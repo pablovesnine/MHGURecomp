@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -342,6 +343,21 @@ class InterfaceTests(unittest.TestCase):
 
 
 class ImageTests(unittest.TestCase):
+    def test_public_image_inputs_have_explicit_nonroot_read_permissions(self):
+        dockerfile = (ROOT / "tools/docker/Dockerfile").read_text()
+        copies = [shlex.split(line) for line in dockerfile.splitlines()
+                  if line.startswith("COPY ")]
+        self.assertEqual(len(copies), 3)
+        copied = set()
+        for instruction in copies:
+            self.assertEqual(instruction[1], "--chmod=0644")
+            copied.update(instruction[2:-1])
+        self.assertEqual(copied, {
+            "requirements.txt", "docker/prepare-sysroot.sh",
+            "docker/normalize-sysroot.py", "docker/build.sh",
+            "docker/check-elf.py",
+        })
+
     def test_ffmpeg_cross_build_selects_native_host_compiler(self):
         for arch in ("aarch64",):
             for compiler in ("clang", "clang-18"):

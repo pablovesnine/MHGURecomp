@@ -89,11 +89,26 @@ jobs:
           fi
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Export private tracked tools context
+        id: context
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          umask 077
+          context=$(mktemp -d "$RUNNER_TEMP/tools-context.XXXXXX")
+          git archive "$SOURCE_SHA" tools |
+            tar --no-same-permissions --no-same-owner -x -C "$context"
+          for source in requirements.txt docker/prepare-sysroot.sh docker/normalize-sysroot.py \
+                        docker/build.sh docker/check-elf.py; do
+            [[ $(stat -c '%a' "$context/tools/$source") == 600 ]]
+          done
+          [[ $(stat -c '%a' "$context/tools/docker") == 700 ]]
+          echo "path=$context" >> "$GITHUB_OUTPUT"
       - name: Build the tools image once
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: tools
-          file: tools/docker/Dockerfile
+          context: ${{ steps.context.outputs.path }}/tools
+          file: ${{ steps.context.outputs.path }}/tools/docker/Dockerfile
           platforms: linux/amd64
           build-args: |
             SOURCE_REVISION=${{ steps.source.outputs.sha }}
@@ -104,6 +119,26 @@ jobs:
             org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
           cache-from: type=gha,scope=linux-arm64-tools
           cache-to: type=gha,mode=max,scope=linux-arm64-tools
+      - name: Verify tools access as an unprivileged user
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          docker run --rm --platform linux/amd64 --user 65534:65534 \
+            --workdir /tmp --entrypoint bash --env "EXPECTED_SOURCE=$SOURCE_SHA" \
+            mhgurecomp-builder:ci -euc '
+              [[ $(id -u) == 65534 ]]
+              test -r /opt/mhgu/docker/build.sh
+              test -r /opt/mhgu/docker/check-elf.py
+              test -r /opt/mhgu/source-revision
+              test -r /opt/mhgu/host-packages.tsv
+              test -r /opt/mhgu/arm64-packages.tsv
+              test -r /opt/mhgu/requirements.txt
+              test ! -w /opt/mhgu/docker/build.sh
+              [[ $(cat /opt/mhgu/source-revision) == "$EXPECTED_SOURCE" ]]
+              bash -n /opt/mhgu/docker/build.sh
+              python3 /opt/mhgu/docker/check-elf.py aarch64
+              echo "Unprivileged tools access: OK"
+            '
       - name: Mandatory public runtime and ARM64 QEMU tests
         run: |
           bash tools/build-linux-release.sh --check --version 0 --jobs 2 \

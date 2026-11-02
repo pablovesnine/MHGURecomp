@@ -27,13 +27,14 @@ RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 50 \
     && update-alternatives --install /usr/bin/llvm-objdump llvm-objdump /usr/bin/llvm-objdump-18 50 \
     && update-alternatives --install /usr/bin/llvm-readelf llvm-readelf /usr/bin/llvm-readelf-18 50
 
-COPY requirements.txt /opt/mhgu/requirements.txt
+# Local contexts are private (umask 077); installed public tools must be readable by the host UID.
+COPY --chmod=0644 requirements.txt /opt/mhgu/requirements.txt
 RUN python3 -m venv /opt/mhgu/venv \
     && /opt/mhgu/venv/bin/python -m pip install --no-cache-dir \
        -r /opt/mhgu/requirements.txt \
     && /opt/mhgu/venv/bin/python -m pip check
 
-COPY docker/prepare-sysroot.sh docker/normalize-sysroot.py /opt/mhgu/docker/
+COPY --chmod=0644 docker/prepare-sysroot.sh docker/normalize-sysroot.py /opt/mhgu/docker/
 RUN bash /opt/mhgu/docker/prepare-sysroot.sh \
     && mkdir -p /opt/mhgu/include \
     && curl --fail --location --proto '=https' \
@@ -44,7 +45,7 @@ RUN bash /opt/mhgu/docker/prepare-sysroot.sh \
     && dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
        > /opt/mhgu/host-packages.tsv
 
-COPY docker/build.sh docker/check-elf.py /opt/mhgu/docker/
+COPY --chmod=0644 docker/build.sh docker/check-elf.py /opt/mhgu/docker/
 # Keep the revision stamp after expensive tools layers so those cache across SHAs.
 ARG SOURCE_REVISION
 LABEL org.opencontainers.image.revision="${SOURCE_REVISION}"
