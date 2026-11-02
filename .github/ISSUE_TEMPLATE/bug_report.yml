@@ -4,10 +4,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        This fork supports Linux ARM64 through a Docker cross-build on x86_64 Linux.
-        Report ARM64 problems here, not to the upstream maintainer.
-        Try a clean profile without mods or cheats when possible.
-        Do not attach game data, mhgugame.so, generated sources, caches or saves.
+        I support Linux ARM64 through a Docker cross-build on x86_64 Linux. Report ARM64 problems here, not in morerokk's upstream repository. Try a clean profile without mods or cheats when possible. Do not attach game data, mhgugame.so, generated sources, caches or saves.
   - type: dropdown
     id: mods
     attributes:
@@ -38,9 +35,7 @@ body:
     attributes:
       label: Version and full source commit SHA
       description: |
-        For downloaded packages, copy source_revision and version from the included
-        build-metadata.json. For source builds, run git rev-parse HEAD in the build
-        checkout and include the version used to build.
+        For downloaded packages, copy source_revision and version from the included build-metadata.json. For source builds, run git rev-parse HEAD in the build checkout and include the version used to build.
       placeholder: "Full 40-character source SHA; version 0.13.1"
     validations:
       required: true
@@ -68,9 +63,6 @@ body:
     attributes:
       label: Log
       description: |
-        Attach redacted terminal output or log.txt. A desktop launch writes log.txt
-        beside mhgurecomp; a terminal launch normally writes to stderr.
-        Copy the log immediately after the problem. Remove personal paths,
-        network addresses, names and any private game data before sharing.
+        Attach redacted terminal output or log.txt. A desktop launch writes log.txt beside mhgurecomp; a terminal launch normally writes to stderr. Copy the log immediately after the problem. Remove personal paths, network addresses, names and any private game data before sharing.
     validations:
       required: false

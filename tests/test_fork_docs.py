@@ -42,7 +42,7 @@ class ForkDocumentationTests(unittest.TestCase):
         for text in ("AYN Odin 3", "ArmadaOS 20261010", "120 FPS", "Eco",
                      "https://github.com/armada-os/armada", "morerokk"):
             self.assertIn(text, readme)
-        self.assertRegex(readme.lower(), r"maintainer.{0,30}reports?")
+        self.assertRegex(readme, r"\bI (?:tested|test|have tested)\b")
         for name, digest in (
             ("gameplay", "505c83d8a6f33bf8f50aaa111a1564cc064ebc803bd1c1d042cd9623e196022d"),
             ("online", "05effb1b423f6f5557e6563a3324d2309ec2a02259ab7cdff7dff9557d5c6d86"),
@@ -122,6 +122,36 @@ class ForkDocumentationTests(unittest.TestCase):
                 self.assertNotIn("update-build-arm64", text)
                 self.assertNotRegex(text, r"/home/[^/\s]+/")
                 self.assertNotRegex(text, r"~/(?:MHGURecomp|[^/\s]+-test)")
+
+    def test_public_author_voice_is_first_person(self):
+        documents = (*DOCUMENTS, ".github/ISSUE_TEMPLATE/bug_report.yml")
+        for relative in documents:
+            with self.subTest(document=relative):
+                text = (ROOT / relative).read_text()
+                self.assertNotRegex(
+                    text.lower(),
+                    r"\b(?:maintainer|mantainer|maintainer-reported)\b")
+
+    def test_prose_paragraphs_are_not_hard_wrapped(self):
+        for relative in DOCUMENTS:
+            previous_prose = False
+            in_code = False
+            for number, line in enumerate(
+                    (ROOT / relative).read_text().splitlines(), start=1):
+                if line.lstrip().startswith("```"):
+                    in_code = not in_code
+                    previous_prose = False
+                    continue
+                if in_code:
+                    continue
+                stripped = line.strip()
+                is_prose = bool(stripped) and not re.match(
+                    r"^(?:#{1,6}\s|\||[-+*]\s|\d+[.)]\s)", stripped)
+                with self.subTest(document=relative, line=number):
+                    self.assertFalse(
+                        previous_prose and is_prose,
+                        "Keep each prose paragraph on one source line")
+                previous_prose = is_prose
 
     def test_personal_entry_points_are_not_public_files(self):
         self.assertEqual(list(ROOT.glob("update-build-arm64*.sh")), [])
