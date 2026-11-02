@@ -37,7 +37,7 @@ work=$(mktemp -d "$common/upstream-version.XXXXXX")
 
 # Read data, not shell. -d '' detects NUL rather than silently discarding it,
 # and preserves the final LF, unlike command substitution.
-state_file=tools/upstream-release.tsv
+state_file=.github/maintenance/upstream-release.tsv
 [[ -f $state_file && -r $state_file ]] || die "missing or unreadable state file"
 state=''
 if IFS= read -r -d '' state < "$state_file"; then

@@ -19,6 +19,7 @@ Run from a terminal before trying a Steam shortcut:
 Select the executable directly in Steam, without a compatibility layer.
 Check graphics, audio, controls, settings and save/load.
 Settings open with F1 or Minus + Plus.
+See the [settings guide](SETTINGS_UI.md) for navigation, saving and restart-only options.
 
 Game files, settings, mods and caches normally live beside the executable.
 Saves normally use `$XDG_DATA_HOME/MHGURecomp/save/`, falling back to
@@ -40,6 +41,9 @@ XDG_DATA_HOME="$PWD/test-profile" ./mhgurecomp
   do not disable system security features speculatively.
 - **Mod-only failure:** reproduce with a fresh installation without mods.
 
-Report the source SHA, device, distribution, GPU/driver and a redacted log
-in this fork's Issues. Never attach game libraries, dumps, generated code,
+Report the version and full source SHA: for a downloaded package, copy
+`source_revision` from its `build-metadata.json`; for a source build, use
+`git rev-parse HEAD` in the build checkout. Include the device, distribution,
+GPU/driver and a redacted log in this fork's Issues.
+Never attach game libraries, dumps, generated code,
 caches, saves or playable archives.

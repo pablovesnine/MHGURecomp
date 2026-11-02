@@ -25,8 +25,8 @@ MARKER = "[upstream-sync]"
 BOT_NAME = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 CONTEXT = "upstream-sync/aarch64"
-POLICY = "tools/fork-policy.json"
-RELEASE_STATE = "tools/upstream-release.tsv"
+POLICY = ".github/maintenance/fork-policy.json"
+RELEASE_STATE = ".github/maintenance/upstream-release.tsv"
 STATE_KEYS = ("schema", "algorithm", "repository", "release_id", "version", "tag",
               "tag_oid", "commit", "published_at", "fork_base", "migration_merge",
               "migration_source")

@@ -4,12 +4,12 @@
     "files": [
       "README.md", "Makefile", ".gitignore",
       "tools/.dockerignore", "tools/desktop-arch.mk", "tools/dist.py",
-      "tools/build-linux-release.sh", "tools/sync-upstream.py", "tools/fork-policy.json",
-      "tools/upstream-version.sh", "tools/upstream-release.tsv",
+      "tools/build-linux-release.sh", "tools/upstream-version.sh",
       "updater/updater.h",
       "tests/test_build_arch.py", "tests/test_linux_release.py", "tests/test_fork_docs.py",
       "tests/test_upstream_sync.py", "tests/test_automation_workflows.py",
-      "tests/test_upstream_version.py", "tests/test_release_sync.py"
+      "tests/test_upstream_version.py", "tests/test_release_sync.py",
+      "tests/test_repository_layout.py"
     ],
     "prefixes": [".github/", "docs/", "tools/docker/"]
   },
@@ -18,7 +18,9 @@
       "runtime/platform/android.c", "runtime/platform/windows.c",
       "tools/bundle_dlls.py", "tests/test_update_arch.c",
       "update-build-arm64.sh", "tests/test_update_build.py",
-      "run-debug.bat", "run-game.bat"
+      "run-debug.bat", "run-game.bat",
+      "tools/sync-upstream.py", "tools/fork-policy.json",
+      "tools/upstream-release.tsv", "tools/vkreplay.c"
     ],
     "prefixes": ["android/", "server/", "extras/cheats/", "updater/"]
   },
@@ -28,7 +30,7 @@
       "tools/disasm.py", "tools/gamelib_entry.c", "tools/gen.py", "tools/hle_list.py",
       "tools/imgui_thunks.py", "tools/lifter.py", "tools/mtarc.py", "tools/neon.py",
       "tools/nso.py", "tools/requirements.txt", "tools/retool.py", "tools/samples.py",
-      "tools/test_harness.c", "tools/test_lift.py", "tools/vkprobe.c", "tools/vkreplay.c"
+      "tools/test_harness.c", "tools/test_lift.py", "tools/vkprobe.c"
     ],
     "prefixes": ["runtime/", "third_party/", "tests/"]
   }

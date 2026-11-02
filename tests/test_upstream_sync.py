@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).resolve().parents[1] / "tools/sync-upstream.py"
+SCRIPT = Path(__file__).resolve().parents[1] / ".github/maintenance/sync-upstream.py"
 SPEC = importlib.util.spec_from_file_location("upstream_sync", SCRIPT)
 sync = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(sync)
@@ -31,9 +31,9 @@ class SyncTests(unittest.TestCase):
         self.commit("common", "base\n")
         self.commit("README.md", "original\n")
         self.commit("runtime/platform/android.c", "old Android\n")
-        self.commit("tools/fork-policy.json", json.dumps({
+        self.commit(".github/maintenance/fork-policy.json", json.dumps({
             "version": 1,
-            "keep": {"files": ["README.md", "tools/fork-policy.json", "tools/upstream-release.tsv"], "prefixes": [".github/"]},
+            "keep": {"files": ["README.md"], "prefixes": [".github/"]},
             "remove": {"files": ["runtime/platform/android.c"], "prefixes": ["android/"]},
             "shared": {"files": ["common", "fork", "upstream", "human"], "prefixes": ["runtime/"]},
         }))
@@ -48,7 +48,7 @@ class SyncTests(unittest.TestCase):
             "tag_oid": tracked, "commit": tracked, "published_at": "2026-01-01T00:00:00Z",
             "fork_base": tracked, "migration_merge": tracked, "migration_source": tracked,
         }
-        self.commit("tools/upstream-release.tsv", "".join(
+        self.commit(".github/maintenance/upstream-release.tsv", "".join(
             key + "\t" + value + "\n" for key, value in self.initial_state.items()))
         self.git(self.writer, "push", "origin", "master")
         self.git(self.root, "clone", str(self.origin), str(self.repo))
@@ -235,7 +235,12 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(self.git(self.repo, "show", result["sha"] + ":README.md"),
                          "fork documentation")
         self.assertEqual(self.git(self.repo, "ls-tree", "-r", "--name-only",
-                                  result["sha"], ".github"), "")
+                                  result["sha"], ".github/workflows"), "")
+        self.assertEqual(
+            self.git(self.repo, "show",
+                     result["sha"] + ":.github/maintenance/fork-policy.json"),
+            self.git(self.repo, "show",
+                     result["base"] + ":.github/maintenance/fork-policy.json"))
 
     def test_removed_prefix_cannot_resurrect_new_files(self):
         self.commit("android/new/evil.c", "never resurrect\n")
@@ -247,14 +252,16 @@ class SyncTests(unittest.TestCase):
 
     def test_real_fork_policy_never_reintroduces_personal_build_files(self):
         policy = json.loads((SCRIPT.parent / "fork-policy.json").read_text())
-        if "tools/upstream-release.tsv" not in policy["keep"]["files"]:
-            policy["keep"]["files"].append("tools/upstream-release.tsv")
+        if ".github/maintenance/upstream-release.tsv" not in policy["keep"]["files"]:
+            policy["keep"]["files"].append(".github/maintenance/upstream-release.tsv")
         policy["shared"]["files"] += ["common", "fork", "upstream", "human"]
-        self.commit("tools/fork-policy.json", json.dumps(policy))
+        self.commit(".github/maintenance/fork-policy.json", json.dumps(policy))
         self.git(self.writer, "push", "origin", "master")
         self.git(self.writer, "reset", "--hard", "HEAD~1")
         retired = ("update-build-arm64.sh", "tests/test_update_build.py",
-                   "run-debug.bat", "run-game.bat")
+                   "run-debug.bat", "run-game.bat", "tools/sync-upstream.py",
+                   "tools/fork-policy.json", "tools/upstream-release.tsv",
+                   "tools/vkreplay.c")
         for path in retired:
             self.commit(path, "upstream attempts to add a retired personal entry\n")
         self.publish()
@@ -268,14 +275,14 @@ class SyncTests(unittest.TestCase):
                 self.assertIn(path, candidate["omitted"])
 
     def test_trusted_policy_not_upstream_policy(self):
-        self.commit("tools/fork-policy.json", '{"version":999,"keep":{}}')
+        self.commit(".github/maintenance/fork-policy.json", '{"version":999,"keep":{}}')
         self.commit(".github/new.yml", "untrusted")
         self.publish()
         self.worker.refresh()
         result = self.candidate()
         self.assertEqual(self.worker.policy_digest(result["base"]), result["policy"])
-        self.assertEqual(self.git(self.repo, "show", result["sha"] + ":tools/fork-policy.json"),
-                         self.git(self.repo, "show", result["base"] + ":tools/fork-policy.json"))
+        self.assertEqual(self.git(self.repo, "show", result["sha"] + ":.github/maintenance/fork-policy.json"),
+                         self.git(self.repo, "show", result["base"] + ":.github/maintenance/fork-policy.json"))
 
     def test_unknown_new_path_blocks(self):
         self.commit("new-unclassified/code.c", "review first")

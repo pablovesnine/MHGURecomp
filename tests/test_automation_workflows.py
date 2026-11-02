@@ -10,7 +10,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("sync_maintenance", ROOT / "tools/sync-upstream.py")
+SPEC = importlib.util.spec_from_file_location(
+    "sync_maintenance", ROOT / ".github/maintenance/sync-upstream.py")
 sync = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(sync)
 
@@ -97,7 +98,9 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn("ref: ${{ github.sha }}", text)
             self.assertNotIn("ref: ${{ needs.prepare.outputs.candidate_sha }}", text)
         prepare = job(self.sync, "prepare")
-        self.assertIn('cp tools/sync-upstream.py "$RUNNER_TEMP/sync-upstream.py"', prepare)
+        self.assertIn(
+            'cp .github/maintenance/sync-upstream.py "$RUNNER_TEMP/sync-upstream.py"',
+            prepare)
         self.assertIn("contents: write", prepare)
         self.assertNotIn("issues: write", prepare)
         validate = job(self.sync, "validate")
@@ -135,9 +138,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('run["head_sha"] == sys.argv[4]', text)
 
     def test_policy_explicit_ownership_and_retirement(self):
-        policy = sync.validate_policy(json.loads((ROOT / "tools/fork-policy.json").read_text()))
+        policy = sync.validate_policy(json.loads(
+            (ROOT / ".github/maintenance/fork-policy.json").read_text()))
         for path in ("README.md", ".github/workflows/brand-new.yml", "docs/new.md",
-                     "tools/sync-upstream.py", "tools/fork-policy.json",
+                     ".github/maintenance/sync-upstream.py",
+                     ".github/maintenance/fork-policy.json",
+                     ".github/maintenance/upstream-release.tsv",
                      "tools/docker/new.sh", "updater/updater.h",
                      "tools/upstream-version.sh", "tests/test_upstream_version.py"):
             self.assertEqual(sync.classify(policy, path), "keep", path)
@@ -145,7 +151,9 @@ class WorkflowTests(unittest.TestCase):
                      "runtime/platform/android.c", "runtime/platform/windows.c",
                      "tools/bundle_dlls.py", "updater/new.c", "tests/test_update_arch.c",
                      "update-build-arm64.sh", "tests/test_update_build.py",
-                     "run-debug.bat", "run-game.bat"):
+                     "run-debug.bat", "run-game.bat", "tools/sync-upstream.py",
+                     "tools/fork-policy.json", "tools/upstream-release.tsv",
+                     "tools/vkreplay.c"):
             self.assertEqual(sync.classify(policy, path), "remove", path)
         for path in ("updater/sha256.c", "runtime/new.c", "third_party/new.c"):
             self.assertEqual(sync.classify(policy, path), "shared", path)
@@ -159,7 +167,8 @@ class WorkflowTests(unittest.TestCase):
 
     def test_policy_covers_actual_tracked_tree_and_no_retired_files(self):
         import subprocess
-        policy = sync.validate_policy(json.loads((ROOT / "tools/fork-policy.json").read_text()))
+        policy = sync.validate_policy(json.loads(
+            (ROOT / ".github/maintenance/fork-policy.json").read_text()))
         paths = subprocess.check_output(
             ["git", "-C", str(ROOT), "ls-files", "-z"], text=True
         ).rstrip("\0").split("\0")

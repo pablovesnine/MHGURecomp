@@ -81,7 +81,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(self.git(self.repo, "show", "-s", "--format=%P", result["sha"]),
                          result["base"] + " " + self.initial)
         state = sync.parse_release_state(self.worker.run(
-            "show", result["sha"] + ":tools/upstream-release.tsv", binary=True).stdout)
+            "show", result["sha"] + ":.github/maintenance/upstream-release.tsv", binary=True).stdout)
         self.assertEqual(state["version"], "1.1")
         self.assertEqual(state["fork_base"], result["base"])
         self.assertEqual(state["migration_merge"], self.initial)
@@ -218,7 +218,7 @@ class ReleaseTests(unittest.TestCase):
         self.git(self.repo, "config", "user.name", sync.BOT_NAME)
         self.git(self.repo, "config", "user.email", sync.BOT_EMAIL)
         for path, contents in (("upstream", "injected\n"),
-                               ("tools/upstream-release.tsv", "schema\t1\n"),
+                               (".github/maintenance/upstream-release.tsv", "schema\t1\n"),
                                ("README.md", "tampered protected\n")):
             self.git(self.repo, "reset", "--hard", result["sha"])
             (self.repo / path).write_text(contents)

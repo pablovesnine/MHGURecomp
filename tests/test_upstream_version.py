@@ -59,8 +59,8 @@ class VersionTests(unittest.TestCase):
             published_at="2026-11-01T16:56:04Z", fork_base=self.base,
             migration_merge=self.base, migration_source=self.base)
         values.update(overrides)
-        path = (repo or self.repo) / "tools/upstream-release.tsv"
-        path.parent.mkdir(exist_ok=True)
+        path = (repo or self.repo) / ".github/maintenance/upstream-release.tsv"
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes("".join(f"{key}\t{value}\n" for key, value in values.items()).encode())
         return path
 
@@ -291,11 +291,11 @@ fi''')
         self.failure("does not match")
 
     def test_missing_state(self):
-        (self.repo / "tools/upstream-release.tsv").unlink()
+        (self.repo / ".github/maintenance/upstream-release.tsv").unlink()
         self.failure("state")
 
     def test_invalid_state_structure_before_network(self):
-        state = (self.repo / "tools/upstream-release.tsv").read_bytes()
+        state = (self.repo / ".github/maintenance/upstream-release.tsv").read_bytes()
         lines = state.splitlines(keepends=True)
         variants = {
             "missing final LF": state[:-1],
@@ -312,7 +312,7 @@ fi''')
         shutil.rmtree(self.remote)
         for label, data in variants.items():
             with self.subTest(label=label):
-                (self.repo / "tools/upstream-release.tsv").write_bytes(data)
+                (self.repo / ".github/maintenance/upstream-release.tsv").write_bytes(data)
                 self.failure("state")
 
     def test_invalid_state_values_before_network(self):

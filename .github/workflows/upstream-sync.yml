@@ -48,7 +48,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
       - name: Copy trusted maintenance code before changing checkout
-        run: cp tools/sync-upstream.py "$RUNNER_TEMP/sync-upstream.py"
+        run: cp .github/maintenance/sync-upstream.py "$RUNNER_TEMP/sync-upstream.py"
       - name: Prepare pinned stable-release merge (no PR)
         id: prepare
         env:
@@ -112,7 +112,7 @@ jobs:
           KEY: ${{ needs.prepare.outputs.key }}
           RESULT: ${{ needs.validate.result }}
         run: |
-          python3 tools/sync-upstream.py report --phase validation \
+          python3 .github/maintenance/sync-upstream.py report --phase validation \
             --sha "$SHA" --key "$KEY" --result "$RESULT"
 
   promote:
@@ -141,7 +141,7 @@ jobs:
           POLICY: ${{ needs.prepare.outputs.policy }}
           RESULT: ${{ needs.validate.result }}
         run: |
-          python3 tools/sync-upstream.py promote --repo "$GITHUB_WORKSPACE" \
+          python3 .github/maintenance/sync-upstream.py promote --repo "$GITHUB_WORKSPACE" \
             --sha "$SHA" --base "$BASE" --upstream "$UPSTREAM" --policy "$POLICY" --result "$RESULT"
 
   publish:
@@ -183,6 +183,6 @@ jobs:
           PROMOTION: ${{ needs.promote.result }}
           PUBLICATION: ${{ needs.publish.result }}
         run: |
-          python3 tools/sync-upstream.py report --sha "$SHA" --key "$KEY" \
+          python3 .github/maintenance/sync-upstream.py report --sha "$SHA" --key "$KEY" \
             --outcome "$OUTCOME" --message "$MESSAGE" \
             --promotion "$PROMOTION" --publication "$PUBLICATION"

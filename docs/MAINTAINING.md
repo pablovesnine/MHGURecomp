@@ -4,6 +4,29 @@
 normal merge commits. No force-push, reset of published history or routine
 manual PR approval is needed.
 
+## Repository structure
+
+Public build entry points remain `tools/build-linux-release.sh` and
+`tools/upstream-version.sh`. Internal release synchronization lives in
+`.github/maintenance/sync-upstream.py`, with trusted policy in
+`.github/maintenance/fork-policy.json` and pinned release state in
+`.github/maintenance/upstream-release.tsv`. Runtime code stays in `runtime/`;
+recompiler tools and build helpers stay in `tools/`, with regressions in `tests/`.
+
+The five maintained workflows have distinct roles:
+
+- [linux-ci.yml](../.github/workflows/linux-ci.yml): push/PR quick checks and manual full validation.
+- [linux-checks.yml](../.github/workflows/linux-checks.yml): reusable quick checks.
+- [linux-builder.yml](../.github/workflows/linux-builder.yml): reusable ARM64 validation and tools-image artifact.
+- [linux-publisher.yml](../.github/workflows/linux-publisher.yml): publish an already validated master image.
+- [upstream-sync.yml](../.github/workflows/upstream-sync.yml): discover, validate and promote stable upstream releases.
+
+The former experimental Vulkan replay diagnostic (vkreplay.c) is retired.
+`tools/vkprobe.c` remains an optional Vulkan diagnostic, not a build prerequisite.
+`updater/sha256.c` and its interface in `updater/updater.h` remain required by
+runtime networking; they are not a binary updater. `tools/test_lift.py` and
+`tools/test_harness.c` remain required by the recompiler differential tests.
+
 ## Automatic upstream updates
 
 **Synchronize stable upstream releases after ARM64 validation** checks
@@ -21,7 +44,7 @@ development master commits do not trigger integration.
 5. Publish the same tested tools image to GHCR.
 6. Remove only the incorporated temporary branch tip.
 
-`tools/upstream-release.tsv` records the stable release identity. The same
+`.github/maintenance/upstream-release.tsv` records the stable release identity. The same
 release remains a no-op after fork documentation or upstream release-note
 edits. A new higher release at the same commit still requires validation.
 Missing/reclassified releases, moved tags, API failures, downgrades and
@@ -39,7 +62,7 @@ Human edits on that branch are never overwritten.
 Stale candidates are also preserved for intervention rather than extended
 with ordinary merges or force-updated.
 
-`tools/fork-policy.json` protects the fork's README, automation and build
+`.github/maintenance/fork-policy.json` protects the fork's README, automation and build
 rules and keeps retired paths deleted. Shared runtime, recompiler and
 dependency changes merge normally. The policy comes from trusted master,
 not from the candidate. Actions reports which upstream changes the policy
@@ -108,7 +131,7 @@ The public wrapper exports tracked HEAD, not unrelated working files.
 Dump mounts are read-only; SELinux labels are adjusted on the dedicated
 dump/work/output directories. Never point the dump option at your home root.
 
-Release builds use the stable version pinned in `tools/upstream-release.tsv`.
+Release builds use the stable version pinned in `.github/maintenance/upstream-release.tsv`.
 `bash tools/upstream-version.sh` verifies its exact upstream tag object and
 commit in a separate ref namespace, not local/fork tags or a higher historical
 ancestor tag. Verification needs network access and full Git history;

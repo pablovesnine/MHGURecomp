@@ -121,9 +121,10 @@ class InterfaceTests(unittest.TestCase):
             "published_at": "2026-01-01T00:00:00Z", "fork_base": base,
             "migration_merge": base, "migration_source": base,
         }
-        (self.repo / "tools/upstream-release.tsv").write_text(
+        (self.repo / ".github/maintenance").mkdir(parents=True, exist_ok=True)
+        (self.repo / ".github/maintenance/upstream-release.tsv").write_text(
             "".join(key + "\t" + value + "\n" for key, value in state.items()))
-        self.git("add", "tools/upstream-release.tsv")
+        self.git("add", ".github/maintenance/upstream-release.tsv")
         self.git("-c", "user.name=Test Fixture",
                  "-c", "user.email=fixture@example.invalid",
                  "commit", "-qm", "Pin fixture stable release " + version)

@@ -7,13 +7,13 @@ Running the game requires your own complete **MHGU 1.4.0** dump.
 ## Download
 
 My built ARM64 packages, when available, are published in
-[Releases](https://github.com/pablovesnine/MHGURecomp/releases).
+[Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.13.1).
 Download a package and follow [Install](#install), cloning is not required.
 To build your own package instead, follow the steps below.
 
 ## Screenshots
 
-Releases are tested on **AYN Odin 3** with
+The maintainer reports testing releases on **AYN Odin 3** with
 [ArmadaOS 20261010](https://github.com/armada-os/armada): running at **~120 FPS in Eco mode**, working online multiplayer, and morerokk's custom menu
 with all its features working.
 
@@ -24,7 +24,7 @@ with all its features working.
 ## Build
 
 Build on a **Linux x86-64 PC** with Git and working local Docker,
-the output is for **ARM64** only. If a build for x86-x64, please refer to [morerokk/MHGURecomp](https://github.com/morerokk/MHGURecomp).
+the output is for **ARM64** only. For an x86-64 build, please refer to [morerokk/MHGURecomp](https://github.com/morerokk/MHGURecomp).
 
 1. Check the prerequisites:
 
@@ -68,7 +68,7 @@ Back up saves before testing an update. You can add `mhgurecomp` to Steam as a n
 ## Maintenance
 
 Published stable upstream releases are checked every six hours. Compatible releases enter `master`
-only after full ARM64 validation. Normal fork edits run quick check, full
+only after full ARM64 validation. Normal fork edits run quick checks; full
 Docker/QEMU validation is otherwise manual.
 
 [Maintenance](docs/MAINTAINING.md) ·

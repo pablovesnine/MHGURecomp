@@ -36,9 +36,12 @@ body:
   - type: input
     id: version
     attributes:
-      label: Full source commit SHA and local version label
-      description: Use git rev-parse HEAD in the build checkout.
-      placeholder: "Full 40-character SHA; local label 0.13.0"
+      label: Version and full source commit SHA
+      description: |
+        For downloaded packages, copy source_revision and version from the included
+        build-metadata.json. For source builds, run git rev-parse HEAD in the build
+        checkout and include the version used to build.
+      placeholder: "Full 40-character source SHA; version 0.13.1"
     validations:
       required: true
   - type: dropdown
