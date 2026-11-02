@@ -125,8 +125,10 @@ jobs:
         run: |
           docker run --rm --platform linux/amd64 --user 65534:65534 \
             --workdir /tmp --entrypoint bash --env "EXPECTED_SOURCE=$SOURCE_SHA" \
-            mhgurecomp-builder:ci -euc '
+            mhgurecomp-builder:ci -euxc '
               [[ $(id -u) == 65534 ]]
+              stat -c "%a %u:%g %n" /opt/mhgu /opt/mhgu/docker \
+                /opt/mhgu/docker/build.sh /opt/mhgu/docker/check-elf.py
               test -r /opt/mhgu/docker/build.sh
               test -r /opt/mhgu/docker/check-elf.py
               test -r /opt/mhgu/source-revision

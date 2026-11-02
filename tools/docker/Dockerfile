@@ -49,7 +49,8 @@ COPY --chmod=0644 docker/build.sh docker/check-elf.py /opt/mhgu/docker/
 # Keep the revision stamp after expensive tools layers so those cache across SHAs.
 ARG SOURCE_REVISION
 LABEL org.opencontainers.image.revision="${SOURCE_REVISION}"
-RUN printf '%s' "$SOURCE_REVISION" | grep -Eq '^[0-9a-f]{40}$' \
+RUN chmod 0755 /opt/mhgu /opt/mhgu/docker \
+    && printf '%s' "$SOURCE_REVISION" | grep -Eq '^[0-9a-f]{40}$' \
     && printf '%s\n' "$SOURCE_REVISION" > /opt/mhgu/source-revision
 ENV PATH="/opt/mhgu/venv/bin:${PATH}" HOME=/tmp
 WORKDIR /work/src

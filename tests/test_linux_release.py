@@ -343,6 +343,14 @@ class InterfaceTests(unittest.TestCase):
 
 
 class ImageTests(unittest.TestCase):
+    def test_public_tools_directories_are_traversable_after_the_last_copy(self):
+        dockerfile = (ROOT / "tools/docker/Dockerfile").read_text()
+        last_copy = dockerfile.rindex("\nCOPY ")
+        permissions = dockerfile.index(
+            "chmod 0755 /opt/mhgu /opt/mhgu/docker")
+        self.assertGreater(permissions, last_copy)
+        self.assertNotIn("chmod -R", dockerfile)
+
     def test_public_image_inputs_have_explicit_nonroot_read_permissions(self):
         dockerfile = (ROOT / "tools/docker/Dockerfile").read_text()
         copies = [shlex.split(line) for line in dockerfile.splitlines()
