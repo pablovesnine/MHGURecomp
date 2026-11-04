@@ -23,6 +23,54 @@ def build_values(*arguments):
 
 
 class Arm64AbiTests(unittest.TestCase):
+    def test_linux_defaults_and_launcher_exclude_retired_products(self):
+        source = (ROOT / "runtime/config.c").read_text()
+        declaration = source.split("static const char DEFAULT_INI[] =", 1)[1]
+        declaration = declaration.split("\nvoid config_path(", 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "default-ini"
+            subprocess.run(
+                ["clang", "-x", "c", "-o", str(executable), "-"],
+                input="#include <stdio.h>\nconst char ini[] =" + declaration +
+                      "\nint main(void) { fputs(ini, stdout); }\n",
+                text=True, capture_output=True, check=True,
+            )
+            ini = subprocess.check_output([executable], text=True)
+        for residue in ("[Android]", "ShowBattery", "GameFolder", "%APPDATA%",
+                        "mhgurecomp-updater"):
+            self.assertNotIn(residue, ini)
+        self.assertIn("ignored", ini.lower())
+        panel = (ROOT / "runtime/settings_panel.cpp").read_text()
+        self.assertNotIn('add_choice(r, "updates"', panel)
+        launcher = (ROOT / "runtime/ui.c").read_text().split(
+            "static void install_launcher(void)", 1)[1].split(
+                "static void set_window_icon(void)", 1)[0]
+        self.assertNotIn("mhgurecomp-updater", launcher)
+
+    def test_picker_api_header_is_self_contained(self):
+        for language in ("c", "c++"):
+            with self.subTest(language=language):
+                subprocess.run(
+                    ["clang", "-Werror", "-fsyntax-only", "-x", language,
+                     "-Iruntime", "-"],
+                    input='#include "app_actions.h"\n', cwd=ROOT,
+                    text=True, capture_output=True, check=True,
+                )
+
+    def test_partial_arc_fixtures_and_required_cross_target(self):
+        self.assertIn("test-arcmerge", (ROOT / "tools/docker/build.sh").read_text())
+        makefile = (ROOT / "Makefile").read_text()
+        self.assertIn("tests/test_arcmerge.c", makefile)
+        self.assertIn("$(TEST_RUNNER) $(O)/arc-test/test-arcmerge", makefile)
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "arc-test"
+            subprocess.run(
+                ["clang", "-O2", "-Wall", "-Wextra", "-Werror", "-fsigned-char",
+                 "-Iruntime", "tests/test_arcmerge.c", "runtime/arcmerge.c",
+                 "-o", str(executable)], cwd=ROOT, check=True,
+            )
+            subprocess.run([executable], check=True, capture_output=True)
+
     def test_own_c_and_cpp_and_generated_code_use_signed_char(self):
         for alias in ("arm64", "aarch64"):
             values = build_values(f"TARGET_ARCH={alias}")

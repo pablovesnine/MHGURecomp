@@ -125,11 +125,13 @@ static const char DEFAULT_INI[] =
     "; Default: Off\n"
     "ShowFPS = Off\n"
     "\n"
+#ifdef __ANDROID__
     "; Android only: show the battery's charge (in percent) in the same box as the frame rate, or in a box of its own\n"
     "; Off, WithFPS, ByItself\n"
     "; Default: Off\n"
     "ShowBattery = Off\n"
     "\n"
+#endif
     "; Framerate cap\n"
     "; Between 30 and 240\n"
     "; Default: 60\n"
@@ -316,17 +318,17 @@ static const char DEFAULT_INI[] =
     "; Default: 100\n"
     "MenuScale = 100\n"
     "\n"
-    "; What mhgurecomp-updater does when it is started: check GitHub for a newer release and ask before installing it,\n"
-    "; install it without asking, or only start the game. Starting mhgurecomp itself never checks or updates.\n"
+    "; Legacy setting, ignored in this Linux ARM64 build. Download new packages manually from this fork's Releases.\n"
     "; Ask, Auto, Off\n"
     "; Default: Ask\n"
     "Updates = Ask\n"
     "\n"
-    "; PC only. The folder the save is kept in (the one that holds save_0), for example on another drive or in a synced\n"
-    "; folder. Empty: the default (%APPDATA%\\MHGURecomp\\save on Windows, ~/.local/share/MHGURecomp/save on Linux).\n"
+    "; Folder containing save_0, for example on another drive. Empty: $XDG_DATA_HOME/MHGURecomp/save,\n"
+    "; or ~/.local/share/MHGURecomp/save when XDG_DATA_HOME is unset.\n"
     "; Your save is not moved: copy save_0 there yourself. Takes effect at the next start\n"
     "SaveLocation =\n"
     "\n"
+#ifdef __ANDROID__
     "[Android]\n"
     "; Android only. The folder the save is kept in, so syncing software can keep it in step: the one that holds save_0. Empty: the app's own\n"
     "; folder. Set it with Save folder in the settings menu (Android tab): the app needs Android's \"All files access\"\n"
@@ -336,7 +338,9 @@ static const char DEFAULT_INI[] =
     "; Android only. The folder holding the game's exefs and romfs folders, used where it is (for example on a USB drive or SD\n"
     "; card), so they don't have to fit in the app's own folder. Empty: the data folder in the app's own folder. Set it with\n"
     "; Game files folder in the settings menu (Android tab): the app needs Android's \"All files access\". Takes effect at the next start\n"
-    "GameFolder =\n";
+    "GameFolder =\n"
+#endif
+    ;
 
 void config_path(char *buf, size_t size) {
     const char *e = getenv("MHGU_CONFIG");

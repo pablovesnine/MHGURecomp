@@ -10,7 +10,7 @@
       "tests/test_upstream_sync.py", "tests/test_automation_workflows.py",
       "tests/test_upstream_version.py", "tests/test_release_sync.py",
       "tests/test_repository_layout.py", "tests/test_release_publish.py",
-      "tests/test_arm64_runtime.py", "tests/test_arm64_abi.c"
+      "tests/test_arm64_runtime.py", "tests/test_arm64_abi.c", "tests/test_arcmerge.c"
     ],
     "prefixes": [".github/", "docs/", "tools/docker/"]
   },

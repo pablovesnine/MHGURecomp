@@ -500,7 +500,7 @@ int main() {
     press(ImGuiKey_Home);
     selected("language");
     // Save folder (PC): Choose folder opens the system's picker, whose folder lands in the draft; Save keeps it
-    down(8);  // (theme, scale, detach, menu.confirm, icons, confirm.exit, updates, bonus)
+    down(7);  // (theme, scale, detach, menu.confirm, icons, confirm.exit, bonus)
     selected("bonus");
     down();
     selected("save.location");
@@ -521,7 +521,7 @@ int main() {
     assert(!strcmp(config_editable().save_location, "/games/MHGU saves"));
     { Config saved = config_editable(); assert(config_restart_required(&saved)); }
     press(ImGuiKey_Home);
-    down(11);
+    down(10);
     selected("save.location.reset");
     confirm();
     press(ImGuiKey_End);
@@ -529,7 +529,7 @@ int main() {
     confirm();
     assert(!config_editable().save_location[0]);
     press(ImGuiKey_Home);
-    down(11);  // (Use the default folder: disabled again, skipped)
+    down(10);  // (Use the default folder: disabled again, skipped)
     selected("restart");
     confirm();
     selected("dialog.cancel");

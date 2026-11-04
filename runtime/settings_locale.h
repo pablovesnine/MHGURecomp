@@ -329,6 +329,8 @@ static inline const char *settings_text(int language, const char *english) {
         {"Paste a cheat code (Atmosphere format, as for Ryujinx). It is saved in cheats/added.txt and turns on right away.",
          "Pega un código de truco (formato Atmosphere, como en Ryujinx). Se guarda en cheats/added.txt y se activa al momento."},
         {"Updates", "Actualizaciones"},
+        {"Uses the default Linux save folder after Save and a restart. The save in the other folder is left where it is.",
+         "Usa la carpeta predeterminada de Linux tras guardar y reiniciar. No mueve el guardado de la otra carpeta."},
         {"Ask", "Preguntar"},
         {"Bonus content", "Contenido extra"},
         {"Move menu", "Mover menú"},

@@ -443,3 +443,9 @@ test-arm64-abi:
 	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(GENFLAGS) tests/test_arm64_abi.c -o $(O)/abi-test/generated
 	$(TEST_RUNNER) $(O)/abi-test/runtime
 	$(TEST_RUNNER) $(O)/abi-test/generated
+
+.PHONY: test-arcmerge
+test-arcmerge:
+	@mkdir -p $(O)/arc-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(RTFLAGS) tests/test_arcmerge.c runtime/arcmerge.c -o $(O)/arc-test/test-arcmerge
+	$(TEST_RUNNER) $(O)/arc-test/test-arcmerge

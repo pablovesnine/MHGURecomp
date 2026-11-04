@@ -15,7 +15,7 @@ Use L/R to cycle tabs, or click a tab label.
 | Misc | Hub rules, monster HP scaling and per-quest overrides. |
 | Mods | Enable and order installed mods, and review file conflicts. |
 | Cheats | Toggle cheats and add a cheat. |
-| Menu Options | Language, theme, scale, panel placement, host confirmation button, button icons, save folder, exit policy, Updates, bonus content, Restart and Exit game. |
+| Menu Options | Language, theme, scale, panel placement, host confirmation button, button icons, save folder, exit policy, bonus content, Restart and Exit game. |
 
 Mods load from top to bottom, so a later mod wins unless you choose a different result for a conflict. Save the order, then restart. Cheat toggles apply on Save without a restart. Turning a cheat off undoes its code changes, but not values it already changed, such as money or items. New cheat files appear after a restart, while cheats entered through **Add a cheat** work immediately.
 
@@ -41,7 +41,7 @@ The game saves the INI file atomically. If a write fails, it keeps the previous 
 
 **Restart** asks for confirmation, saves settings and restarts the game. If you have pending changes or text you have not committed, **Exit game** offers Save and exit or Exit without saving. Turning off Confirm exit skips the normal exit confirmation only when there are no pending changes.
 
-The inherited **Updates** option remains for configuration compatibility, but I do not build or ship a binary updater. It does not download or install updates, despite what the old INI help says. Follow [manual updates](../README.md#manual-updates) instead.
+The legacy **Updates** INI key remains readable for compatibility, but I removed the inactive menu row. I do not build or ship a binary updater. It does not download or install updates. Follow [manual updates](../README.md#manual-updates) instead.
 
 ## Host confirmation button
 

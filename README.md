@@ -28,6 +28,8 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 
 I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.13.1). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
 
+The source now includes upstream **0.14.0**. The downloadable package remains **0.13.1** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+
 Your device needs an ARM64 Linux userspace, glibc 2.39 or newer, a compatible C++ runtime and a desktop session. It also needs the Vulkan features required by the renderer, not just a matching version number. See [device requirements](docs/BUILD-LINUX-ARM64.md).
 
 ## Screenshots
@@ -53,7 +55,7 @@ Settings live in `mhgurecomp.ini`, with explanations in the file. To change them
 - `[Discord]`: optional `RichPresence` and `ShowHunter`. You need a compatible local Discord IPC client, so availability depends on your client and device environment.
 - `[Bonus Content]`: `BonusContent` (default On), see below
 - `[Audio]`: `Volume` (0 to 100: the whole game), `MuteInBackground` (On / Off, default Off: no sound while the game's window is in the background)
-- `[Application]`: `ConfirmExit`, `Language` (English / Spanish), `ButtonIcons` (Xbox / Switch / PlayStation), `Theme` (Hunter / Gold / Blue) and `MenuScale` (50–200%). Use Detach menu, Move menu and Attach menu in Menu Options to position the panel. The inherited `Updates` setting remains for compatibility and does not download or install updates, despite what the old INI help says. See [Manual updates](#manual-updates).
+- `[Application]`: `ConfirmExit`, `Language` (English / Spanish), `ButtonIcons` (Xbox / Switch / PlayStation), `Theme` (Hunter / Gold / Blue) and `MenuScale` (50–200%). Use Detach menu, Move menu and Attach menu in Menu Options to position the panel. The legacy `Updates` key remains readable for compatibility but does not download or install updates. The inactive menu row is removed. See [Manual updates](#manual-updates).
 
 ### Controls
 
@@ -171,7 +173,7 @@ Extract the package into a new directory on your compatible ARM64 Linux device. 
 
 ## Manual updates
 
-I do not build or ship a binary updater, even though the inherited **Updates** option and INI help still refer to one. To update, download an ARM64 package from this fork's Releases page, back up saves and extract it into a new directory. Reuse your own game files and copy only the settings/mods you want to keep. Saves normally stay in the user-data location above, separate from the extraction directory.
+I do not build or ship a binary updater. The legacy **Updates** key is ignored. To update, download an ARM64 package from this fork's Releases page, back up saves and extract it into a new directory. Reuse your own game files and copy only the settings/mods you want to keep. Saves normally stay in the user-data location above, separate from the extraction directory.
 
 ## Maintenance
 
