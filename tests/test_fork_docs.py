@@ -4,6 +4,7 @@ from pathlib import Path
 import configparser
 import hashlib
 import re
+import subprocess
 import unittest
 from urllib.parse import unquote, urlsplit
 
@@ -37,7 +38,25 @@ def heading_anchors(path):
     return anchors
 
 
+def linux_tab_labels(declaration):
+    # Compare the Linux UI, not labels compiled only into another platform.
+    compiled = subprocess.run(
+        ["clang", "--target=aarch64-linux-gnu", "-E", "-P", "-x", "c++", "-"],
+        input=declaration, text=True, capture_output=True, check=True,
+    ).stdout
+    return re.findall(r'"([^"]+)"', compiled)
+
+
 class ForkDocumentationTests(unittest.TestCase):
+    def test_tab_parser_preserves_all_linux_tabs_and_excludes_other_targets(self):
+        declaration = (
+            'const char *pages[] = {"Display"\n'
+            '#ifdef __ANDROID__\n, "Android"\n#endif\n'
+            '#ifdef _WIN32\n, "Windows"\n#endif\n'
+            '#ifdef __linux__\n, "New Linux tab"\n#endif\n};'
+        )
+        self.assertEqual(linux_tab_labels(declaration), ["Display", "New Linux tab"])
+
     def test_save_folder_and_release_boundaries_are_documented(self):
         readme = (ROOT / "README.md").read_text()
         guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
@@ -101,7 +120,7 @@ class ForkDocumentationTests(unittest.TestCase):
         source = (ROOT / "runtime/settings_panel.cpp").read_text()
         match = re.search(r'const char \*pages\[\]\s*=\s*\{([^}]+)\}', source)
         self.assertIsNotNone(match, "Find the runtime tab labels")
-        runtime_tabs = re.findall(r'"([^"]+)"', match.group(1))
+        runtime_tabs = linux_tab_labels(match.group(0) + ";")
         guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
         documented_tabs = re.findall(r"^\| ([^|]+?) \|", guide, re.MULTILINE)
         documented_tabs = [tab for tab in documented_tabs if tab != "Tab" and not tab.startswith("-")]
