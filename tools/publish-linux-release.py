@@ -47,6 +47,71 @@ def unique_object(pairs):
     return result
 
 
+def image_identities(raw):
+    """Bind either Docker storage identity to one exact registry manifest."""
+    manifest = json.loads(raw)
+    config = manifest.get("config", {}).get("digest")
+    require(manifest.get("schemaVersion") == 2 and "manifests" not in manifest and
+            isinstance(config, str) and re.fullmatch(DIGEST, config),
+            "GHCR must provide a direct manifest with a pinned image config")
+    # Classic Docker reports the config digest as .Id. Other image stores may
+    # report the manifest digest. Both are immutable identities of this manifest,
+    # not interchangeable arbitrary IDs or mutable source tags.
+    return frozenset((config, "sha256:" + hashlib.sha256(raw).hexdigest()))
+
+
+def command_failure(exc):
+    """Describe the failed operation without exposing command/body credentials."""
+    operation = Path(exc.cmd[0]).name
+    if exc.cmd[:2] == ["gh", "api"]:
+        operation = ("GitHub asset upload" if any(
+            arg.startswith("https://uploads.github.com/") for arg in exc.cmd)
+            else "GitHub API request")
+    status = re.search(rb"\bHTTP ([1-5][0-9]{2})\b", exc.stderr or b"")
+    detail = f"exit {exc.returncode}"
+    if status:
+        detail += "; HTTP " + status[1].decode("ascii")
+    return f"{operation} failed ({detail})"
+
+
+def release_bodies(version, revision, image, hashes):
+    """Render readable notes and the exact legacy receipt for verified inputs."""
+    receipt = {"source_revision": revision, "assets": hashes,
+               "builder_image": image}
+    legacy = ("Linux ARM64 local release; no game data included.\n\n"
+              "Local publisher receipt v1:\n" +
+              json.dumps(receipt, sort_keys=True) + "\n")
+    source = "https://github.com/" + REPOSITORY + "/blob/" + revision
+    notes = f"""# Linux ARM64 {version}
+
+My Linux ARM64 package, based on stable [MHGURecomp {version}](https://github.com/morerokk/MHGURecomp/releases/tag/{version}).
+
+## Install
+
+1. Download `{TOP}.{version}.tar.gz` and `SHA256SUMS` into the same directory.
+2. Verify the archive with `sha256sum --check SHA256SUMS`.
+3. Extract it into a new directory on your ARM64 Linux device.
+4. Copy `exefs/` and the complete `romfs/` from your own **MHGU 1.4.0** dump into `{TOP}/data/`.
+5. Back up existing saves before upgrading, then run `./mhgurecomp` from the extracted directory.
+
+ARM64 Linux only. Game data is not included.
+
+See the [installation guide]({source}/docs/BUILD-LINUX-ARM64.md) and [settings guide]({source}/docs/SETTINGS_UI.md).
+
+<details>
+<summary>Build provenance</summary>
+
+Local publisher receipt v1:
+
+```json
+{json.dumps(receipt, sort_keys=True, indent=2)}
+```
+
+</details>
+"""
+    return notes, legacy
+
+
 class Publisher:
     def __init__(self, root, output, run=subprocess.run):
         self.root = Path(root).resolve()
@@ -229,9 +294,8 @@ class Publisher:
     def provenance(self):
         raw = self.command("docker", "buildx", "imagetools", "inspect",
                            REGISTRY + ":" + self.revision, "--raw")
-        manifest = json.loads(raw)
-        require(manifest.get("schemaVersion") == 2 and
-                manifest.get("config", {}).get("digest") == self.image,
+        identities = image_identities(raw)
+        require(self.image in identities,
                 "GHCR manifest does not identify the attested tested image")
         self.manifest_hash = "sha256:" + hashlib.sha256(raw).hexdigest()
         context = self.env.get("DOCKER_CONTEXT")
@@ -247,7 +311,7 @@ class Publisher:
         self.docker = ["docker", "--host", endpoint]
         info = json.loads(self.command(*self.docker, "image", "inspect", self.image))[0]
         labels = info.get("Config", {}).get("Labels") or {}
-        require(info.get("Id") == self.image and info.get("Os") == "linux" and
+        require(info.get("Id") in identities and info.get("Os") == "linux" and
                 info.get("Architecture") == "amd64" and
                 labels.get("org.opencontainers.image.revision") == self.revision and
                 labels.get("org.opencontainers.image.source") == "https://github.com/" + REPOSITORY,
@@ -282,7 +346,8 @@ class Publisher:
         if release:
             require(tag is not None and release.get("tag_name") == self.version and
                     release.get("target_commitish") == self.revision and
-                    release.get("body") == self.body and not release.get("prerelease"),
+                    release.get("body") in (self.body, self.legacy_body) and
+                    not release.get("prerelease"),
                     "existing release is not this exact source and asset set")
         return tag, release
 
@@ -335,11 +400,9 @@ class Publisher:
         self.local_package()
         self.validation()
         self.provenance()
-        # A canonical ownership/idempotence receipt, not user-supplied release notes.
-        self.body = ("Linux ARM64 local release; no game data included.\n\n"
-                     "Local publisher receipt v1:\n" + json.dumps({
-                         "source_revision": self.revision, "assets": self.hashes,
-                         "builder_image": self.image}, sort_keys=True) + "\n")
+        # Accept only complete canonical notes, never a receipt in arbitrary text.
+        self.body, self.legacy_body = release_bodies(
+            self.version, self.revision, self.image, self.hashes)
         tag, release = self.guard()
         present = self.remote_assets(release, complete=not release["draft"]) if release else set()
         if dry_run:
@@ -368,11 +431,13 @@ class Publisher:
             present = self.remote_assets(current)
             if name in present:
                 continue
+            body = (self.output / name).read_bytes()
             self.command("gh", "api", "--hostname", "github.com",
                          "https://uploads.github.com/" + PREFIX + "/releases/" +
                          str(release["id"]) + "/assets?name=" + name, "--method", "POST",
-                         "-H", "Content-Type: application/octet-stream", "--input", "-",
-                         data=(self.output / name).read_bytes())
+                         "-H", "Content-Type: application/octet-stream",
+                         "-H", "Content-Length: " + str(len(body)), "--input", "-",
+                         data=body)
         _, current = self.guard()
         require(current and current["id"] == release["id"] and current["draft"],
                 "draft changed during publication; refusing finalize")
@@ -396,7 +461,7 @@ def main():
             subprocess.CalledProcessError) as exc:
         if isinstance(exc, subprocess.CalledProcessError):
             # Do not print captured gh/Docker output: it may contain credentials.
-            message = f"{Path(exc.cmd[0]).name} failed (exit {exc.returncode})"
+            message = command_failure(exc)
         else:
             message = str(exc)
         sys.exit("publish: " + message + "; any existing draft is retained for an identical retry")

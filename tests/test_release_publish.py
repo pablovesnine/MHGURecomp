@@ -63,6 +63,9 @@ class World:
         self.fail_upload = None
         self.corrupt_download = False
         self.manifest = {"schemaVersion": 2, "config": {"digest": IMAGE}}
+        self.local_image_id = IMAGE
+        self.local_os = "linux"
+        self.local_arch = "amd64"
         self.labels = {"org.opencontainers.image.source":
                        "https://github.com/" + REPO,
                        "org.opencontainers.image.revision": SHA}
@@ -109,6 +112,11 @@ class World:
             command = command[2:]
             endpoint = command[0]
             method = command[command.index("--method") + 1] if "--method" in command else "GET"
+            if endpoint.startswith("https://uploads.github.com/"):
+                headers = [command[i + 1] for i, arg in enumerate(command)
+                           if arg == "-H"]
+                assert headers.count(
+                    "Content-Length: " + str(len(kwargs["input"]))) == 1
             json_input = (kwargs.get("input") and "--input" in command and
                           command[-1] == "-" and not endpoint.startswith("https://uploads."))
             payload = json.loads(kwargs["input"]) if json_input else None
@@ -132,7 +140,8 @@ class World:
         elif args[:3] == ["docker", "--host", "unix:///fixture/docker.sock"]:
             command = args[3:]
             if command[:2] == ["image", "inspect"]:
-                out = json.dumps([dict(Id=IMAGE, Os="linux", Architecture="amd64",
+                out = json.dumps([dict(Id=self.local_image_id, Os=self.local_os,
+                                       Architecture=self.local_arch,
                                        Config={"Labels": self.labels})]).encode()
             elif command[0] == "run":
                 assert "--network=none" in command and "--read-only" in command
@@ -257,6 +266,16 @@ class PublishTests(unittest.TestCase):
         (self.out / "SHA256SUMS").write_text(
             digest((self.out / NAME).read_bytes()) + "  " + NAME + "\n")
 
+    def legacy_body(self):
+        receipt = {
+            "source_revision": SHA, "builder_image": self.metadata["builder_image"],
+            "assets": {name: digest((self.out / name).read_bytes())
+                       for name in (NAME, "SHA256SUMS")},
+        }
+        return ("Linux ARM64 local release; no game data included.\n\n"
+                "Local publisher receipt v1:\n" +
+                json.dumps(receipt, sort_keys=True) + "\n")
+
     def publish(self, dry_run=False):
         return self.module.Publisher(ROOT, self.out, run=self.world.run).publish(dry_run)
 
@@ -271,6 +290,61 @@ class PublishTests(unittest.TestCase):
         self.module.dist.check_arch.assert_called_once()
         self.assertTrue(any("imagetools" in c for c in self.world.commands))
 
+    def test_config_and_manifest_identities_are_bound_to_the_same_image(self):
+        for package_kind in ("config", "manifest"):
+            for local_kind in ("config", "manifest"):
+                with self.subTest(package=package_kind, local=local_kind):
+                    self.world = World()
+                    manifest_id = "sha256:" + digest(json.dumps(self.world.manifest).encode())
+                    aliases = {"config": IMAGE, "manifest": manifest_id}
+                    self.metadata["builder_image"] = aliases[package_kind]
+                    self.world.local_image_id = aliases[local_kind]
+                    self.write_archive()
+                    self.publish(True)
+                    self.assertEqual(self.world.writes, [])
+                    # Provenance checks still inspect and run only the immutable
+                    # package identifier, never a mutable registry tag.
+                    runs = [c for c in self.world.commands
+                            if c[:4] == ["docker", "--host", "unix:///fixture/docker.sock", "run"]]
+                    self.assertEqual(len(runs), 2)
+                    self.assertTrue(all(aliases[package_kind] in c for c in runs))
+
+    def test_manifest_package_retries_are_identical_and_never_relabel_metadata(self):
+        image = "sha256:" + digest(json.dumps(self.world.manifest).encode())
+        self.metadata["builder_image"] = self.world.local_image_id = image
+        self.write_archive()
+        archive_hash = digest((self.out / NAME).read_bytes())
+        self.publish()
+        writes = len(self.world.writes)
+        self.publish()
+        self.assertEqual(len(self.world.writes), writes)
+        self.assertEqual(digest((self.out / NAME).read_bytes()), archive_hash)
+        self.assertEqual(self.metadata["builder_image"], image)
+        receipt = json.loads(self.world.release["body"].split(
+            "```json\n", 1)[1].split("\n```", 1)[0])
+        self.assertEqual(receipt["builder_image"], image)
+
+    def test_unrelated_local_image_and_non_host_platform_remain_rejected(self):
+        for attribute, value in (("local_image_id", "sha256:" + "f" * 64),
+                                 ("local_os", "windows"), ("local_arch", "arm64")):
+            with self.subTest(attribute=attribute):
+                self.world = World()
+                setattr(self.world, attribute, value)
+                self.rejected()
+
+    def test_index_cannot_masquerade_as_a_direct_manifest(self):
+        self.world.manifest["manifests"] = []
+        self.metadata["builder_image"] = "sha256:" + digest(json.dumps(self.world.manifest).encode())
+        self.write_archive()
+        self.rejected()
+
+    def test_manifest_identity_rechecks_and_rejects_registry_tag_changes(self):
+        image = "sha256:" + digest(json.dumps(self.world.manifest).encode())
+        self.metadata["builder_image"] = self.world.local_image_id = image
+        self.write_archive()
+        self.world.manifest_changes_after = 1
+        self.rejected()
+
     def test_success_finalizes_only_after_verified_assets(self):
         self.publish()
         self.assertFalse(self.world.release["draft"])
@@ -278,6 +352,128 @@ class PublishTests(unittest.TestCase):
         self.assertEqual({a["name"] for a in self.world.release["assets"]},
                          {NAME, "SHA256SUMS"})
         self.assertEqual(self.world.writes[-1][1], "PATCH")
+
+    def test_new_notes_are_readable_with_collapsed_exact_provenance(self):
+        self.publish()
+        body = self.world.release["body"]
+        self.assertTrue(body.startswith("# Linux ARM64 " + VERSION + "\n\n"))
+        self.assertIn("My Linux ARM64 package", body)
+        self.assertIn("sha256sum --check SHA256SUMS", body)
+        self.assertIn("your own **MHGU 1.4.0** dump", body)
+        self.assertIn("Back up existing saves", body)
+        self.assertIn("Game data is not included.", body)
+        self.assertIn("blob/" + SHA + "/docs/BUILD-LINUX-ARM64.md", body)
+        self.assertIn("blob/" + SHA + "/docs/SETTINGS_UI.md", body)
+        self.assertEqual(body.count("<details>"), 1)
+        self.assertEqual(body.count("</details>"), 1)
+        self.assertNotIn("<details open", body)
+        self.assertIn("<summary>Build provenance</summary>", body)
+        self.assertNotIn("FPS", body)
+        self.assertNotIn("Odin", body)
+        provenance = body.split("```json\n", 1)[1].split("\n```", 1)[0]
+        expected = json.loads(self.legacy_body().split("receipt v1:\n", 1)[1])
+        self.assertEqual(json.loads(provenance), expected)
+        self.assertEqual(provenance, json.dumps(expected, sort_keys=True, indent=2))
+
+    def test_legacy_published_retry_is_read_only_and_keeps_notes(self):
+        self.publish()
+        legacy = self.world.release["body"] = self.legacy_body()
+        writes = len(self.world.writes)
+        self.publish()
+        self.assertEqual(len(self.world.writes), writes)
+        self.assertEqual(self.world.release["body"], legacy)
+
+    def test_legacy_partial_draft_resumes_without_rewriting_notes(self):
+        self.world.fail_upload = "SHA256SUMS"
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.publish()
+        legacy = self.world.release["body"] = self.legacy_body()
+        first_asset_id = self.world.release["assets"][0]["id"]
+        self.world.fail_upload = None
+        self.publish()
+        self.assertFalse(self.world.release["draft"])
+        self.assertEqual(self.world.release["body"], legacy)
+        self.assertEqual(self.world.release["assets"][0]["id"], first_asset_id)
+
+    def test_renderer_returns_only_deterministic_new_and_exact_legacy_bodies(self):
+        hashes = {name: digest((self.out / name).read_bytes())
+                  for name in (NAME, "SHA256SUMS")}
+        first = self.module.release_bodies(VERSION, SHA, IMAGE, hashes)
+        second = self.module.release_bodies(VERSION, SHA, IMAGE, dict(reversed(
+            list(hashes.items()))))
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 2)
+        self.assertEqual(first[1], self.legacy_body())
+        self.assertNotEqual(first[0], first[1])
+        self.publish()
+        self.assertEqual(self.world.release["body"], first[0])
+
+    def test_altered_notes_or_embedded_receipts_still_block_retries(self):
+        self.publish()
+        bodies = (self.world.release["body"], self.legacy_body())
+        for body in bodies:
+            changed_hash = digest((self.out / NAME).read_bytes())
+            for changed in ("arbitrary notes\n" + body, body + "\nextra text",
+                            body.replace(SHA, "2" * 40),
+                            body.replace(IMAGE, "sha256:" + "c" * 64),
+                            body.replace(changed_hash, "0" * 64)):
+                with self.subTest(body=body[:20], changed=changed[:30]):
+                    self.world.release["body"] = changed
+                    self.world.writes.clear()
+                    self.rejected()
+
+    def test_changed_notes_during_draft_retry_block_before_upload(self):
+        self.world.fail_upload = "SHA256SUMS"
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.publish()
+        self.world.fail_upload = None
+        self.world.writes.clear()
+        original = self.world.api
+        reads = 0
+
+        def changing(endpoint, method, payload, raw):
+            nonlocal reads
+            if endpoint == "repos/" + REPO + "/releases?per_page=100":
+                reads += 1
+                if reads > 1:
+                    self.world.release["body"] += "\nunexpected edit"
+            return original(endpoint, method, payload, raw)
+
+        with patch.object(self.world, "api", side_effect=changing):
+            self.rejected()
+        self.assertTrue(self.world.release["draft"])
+        self.assertEqual(len(self.world.release["assets"]), 1)
+
+    def test_binary_uploads_declare_exact_content_length(self):
+        self.publish()
+        uploads = [c for c in self.world.commands
+                   if any(a.startswith("https://uploads.github.com/") for a in c)]
+        self.assertEqual(len(uploads), 2)
+        for command in uploads:
+            endpoint = next(a for a in command
+                            if a.startswith("https://uploads.github.com/"))
+            name = endpoint.split("?name=", 1)[1]
+            self.assertIn("Content-Length: " + str((self.out / name).stat().st_size),
+                          command)
+
+    def test_failure_messages_identify_upload_and_http_without_secrets(self):
+        secret = "never-print-this-token"
+        command = ["gh", "api", "--hostname", "github.com",
+                   "https://uploads.github.com/repos/" + REPO +
+                   "/releases/7/assets?name=" + NAME, "--method", "POST"]
+        for stderr, status in ((b"gh: Length Required (HTTP 411)", "HTTP 411"),
+                               (b"gh: Forbidden (HTTP 403)", "HTTP 403"),
+                               (b"connection lost", None)):
+            with self.subTest(status=status):
+                exc = subprocess.CalledProcessError(
+                    1, command, output=secret.encode(),
+                    stderr=stderr + b"\nAuthorization: Bearer " + secret.encode())
+                message = self.module.command_failure(exc)
+                self.assertIn("GitHub asset upload", message)
+                self.assertNotIn(secret, message)
+                self.assertNotIn("Authorization", message)
+                if status:
+                    self.assertIn(status, message)
 
     def test_no_auth_wrong_repository_dirty_branch_and_stale_sha(self):
         for attribute, value in (("auth", False), ("repository", "other/repo"),
