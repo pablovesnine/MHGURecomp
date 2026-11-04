@@ -64,7 +64,7 @@ python3 /opt/mhgu/docker/check-elf.py aarch64 "${programs[@]}"
 if [[ $mode == check ]]; then
   # All public checks are required, including actual menu navigation.
   make -j"$jobs" "${args[@]}" test-settings test-settings-locale \
-    test-linux-fault test-settings-panel
+    test-linux-fault test-settings-panel test-arm64-abi
   python3 tests/test_build_arch.py
   python3 tests/test_linux_release.py
   exit 0

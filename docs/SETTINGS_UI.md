@@ -15,7 +15,7 @@ Use L/R to cycle tabs, or click a tab label.
 | Misc | Hub rules, monster HP scaling and per-quest overrides. |
 | Mods | Enable and order installed mods, and review file conflicts. |
 | Cheats | Toggle cheats and add a cheat. |
-| Menu Options | Language, theme, scale, panel placement, host confirmation button, button icons, exit policy, Updates, bonus content, Restart and Exit game. |
+| Menu Options | Language, theme, scale, panel placement, host confirmation button, button icons, save folder, exit policy, Updates, bonus content, Restart and Exit game. |
 
 Mods load from top to bottom, so a later mod wins unless you choose a different result for a conflict. Save the order, then restart. Cheat toggles apply on Save without a restart. Turning a cheat off undoes its code changes, but not values it already changed, such as money or items. New cheat files appear after a restart, while cheats entered through **Add a cheat** work immediately.
 
@@ -48,6 +48,19 @@ The inherited **Updates** option remains for configuration compatibility, but I 
 In **Menu Options > Confirm button (recomp)**, choose Original, Bottom button or Right button. Save applies your choice immediately and stores `MenuConfirm = Original|South|East` under `[Controls]`. This choice is separate from Face buttons and Button icons, and the button guide follows it after saving. Release any held buttons after changing it and before returning from an overlay to gameplay.
 
 This setting affects only host settings navigation and confirmations, **not** confirmation in the original game's menus or combat. Forge keeps its own mapping. Button icons change the host menu's symbols, not the game's prompts.
+
+## Save folder
+
+Upstream 0.14.0 adds **Menu Options > Save folder**. `[Application] SaveLocation` names the folder containing `save_0`, not the `save_0` directory itself. An empty value uses the normal user-data location.
+
+1. Close the game and back up your saves.
+2. Create the destination folder and copy the whole `save_0` directory into it.
+3. Open settings and enter the absolute destination path, or select **Choose folder**.
+4. Choose **Save and restart** to apply it.
+
+The game does not move or synchronize saves. **Use the default folder** selects the normal location but leaves your other copy untouched. Invalid or unusable folders can fall back to the previous location, so check diagnostics before continuing. `MHGU_SAVE_DIR` overrides this setting. A custom folder must remain mounted and writable.
+
+`MenuChord = Off` under `[Controls]` disables the Plus+Minus shortcut so the game or a cheat can use that combination. F1 still opens host settings.
 
 ## FSR
 

@@ -105,8 +105,8 @@ LIB_INC    := $(if $(SDL_DEPS),-I$(SDL3_DIR)/include -DMHGU_SDL_BUNDLED) $(if $(
 LIB_STAMPS := $(if $(SDL_DEPS),$(SDL3_DIR)/.built) $(if $(SHADERC_DEPS),$(SHADERC_DIR)/.built)
 
 EXE      := $(B)/mhgurecomp
-OSFLAGS  :=
-GENFLAGS += -fPIC
+OSFLAGS  := -fsigned-char
+GENFLAGS += -fPIC -fsigned-char
 RT_SRC   += runtime/platform/linux_glibc.c $(if $(SDL_DEPS),runtime/platform/linux_sdl.c)
 FFMPEG_CONF += --enable-pic
 # (--exclude-libs: the static libraries linked in - SDL3, shaderc with glslang, FFmpeg - stay inside; only the runtime's
@@ -147,7 +147,7 @@ IMGUI_OBJ := $(patsubst $(IMGUI)/%.cpp,$(O)/imgui/%.o,$(IMGUI_SRC))
 # (-fvisibility=hidden: without it the executable exports Dear ImGui's C++ symbols, and an overlay that links the
 # system ImGui (MangoHud -> libimgui.so.1) binds its HUD's calls into ours: its 1.91 ImFontAtlas handed to our 1.92
 # code crashes at swap-chain creation. Our own code and the Forge plugins' ImGui thunks bind inside the executable.)
-IMGUIFLAGS := -O2 -g -fvisibility=hidden -DCIMGUI_NO_EXPORT -I$(IMGUI) -I$(IMGUI)/imgui $(LIB_INC)
+IMGUIFLAGS := -O2 -g -fvisibility=hidden -DCIMGUI_NO_EXPORT -I$(IMGUI) -I$(IMGUI)/imgui $(OSFLAGS) $(LIB_INC)
 # VulkanMemoryAllocator is vendored for the isolated tools build.
 RTFLAGS  := -O2 -g -fno-strict-aliasing -Wall -Wno-unused-function -Iruntime -Ithird_party/vk_mem_alloc -I$(IMGUI) $(OSFLAGS) $(LIB_INC)
 # FSR 3.1 temporal upscaler (runtime/nvn/vulkan/fsr.c): third_party/fsr-vulkan = AMD FidelityFX SDK 1.1.4's FSR 3.1.4
@@ -209,6 +209,7 @@ $(O)/rt/nvn/vulkan/exec.o: $(O)/shader.id
 $(O)/rt/nvn/vulkan/exec.o: RTFLAGS += -DSHADER_ID='"$(SHADER_ID)"'
 $(O)/version.id: FORCE
 	@mkdir -p $(O); [ "$$(cat $@ 2>/dev/null)" = '$(VERSION)' ] || echo '$(VERSION)' > $@
+$(O)/rt/ui.o: extras/icon/mhgurecomp-128.png
 $(O)/rt/main.o: $(O)/version.id
 $(O)/rt/main.o: RTFLAGS += -DMHGU_VERSION='"$(VERSION)"'
 
@@ -433,3 +434,12 @@ test-linux-fault:
 	@mkdir -p $(O)/platform-test
 	$(CC) $(TARGET_FLAGS) -fuse-ld=lld -O2 -g -Wall -Wextra -Werror -Iruntime tests/test_linux_fault.c runtime/platform/linux.c -ldl -pthread -o $(O)/platform-test/test-linux-fault
 	$(TEST_RUNNER) $(O)/platform-test/test-linux-fault
+
+# Compile both sides of the game-library ABI with their real flag sets.
+.PHONY: test-arm64-abi
+test-arm64-abi:
+	@mkdir -p $(O)/abi-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(RTFLAGS) tests/test_arm64_abi.c -o $(O)/abi-test/runtime
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(GENFLAGS) tests/test_arm64_abi.c -o $(O)/abi-test/generated
+	$(TEST_RUNNER) $(O)/abi-test/runtime
+	$(TEST_RUNNER) $(O)/abi-test/generated

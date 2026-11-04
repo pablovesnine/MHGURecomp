@@ -14,7 +14,7 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 - 16:10, 16:9 and ultrawide aspect ratios, with letterboxing for windows narrower than 16:10
 - Configurable frame-rate cap from 30 to 240 FPS, with actual performance depending on hardware and settings
 - SDL-compatible controllers and experimental, remappable keyboard/mouse controls
-- Optional small-monster synchronization in multiplayer, off by default. Upstream notes that small monsters may not attack with it enabled.
+- Optional small-monster synchronization in multiplayer. Upstream 0.14.0 restores the default to On and fixes related disconnections and high-FPS monster behavior. Existing explicit Off settings stay Off.
 - Optional monster HP scaling by player count
 - Speed up village/hub event-camera pans by pressing A
 - Optional village quests in multiplayer (press L/R at the quest counter), with adjusted monster HP
@@ -32,7 +32,7 @@ Your device needs an ARM64 Linux userspace, glibc 2.39 or newer, a compatible C+
 
 ## Screenshots
 
-I tested this release on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results are from my setup, so performance may differ on other devices or settings.
+I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0 or predict performance on other devices.
 
 ![MHGU gameplay on AYN Odin 3](docs/screenshots/ayn-odin3-gameplay.jpg) ![Online multiplayer lobby list](docs/screenshots/ayn-odin3-online.jpg) ![morerokk's custom settings menu](docs/screenshots/ayn-odin3-menu.jpg)
 
@@ -83,7 +83,7 @@ Back up saves before using a donor. Without one, the game adds no downloaded con
 To install a mod, put its folder in `mods/` and restart. The game loads mod layers at startup, and compatibility depends on the mod, its patches/plugins and the renderer.
 
 - Romfs overlays support the `atmosphere/contents/0100770008DD8000/romfs` layout inside a mod.
-- Archive merging combines changes to different entries in archives such as `resident_eng.arc`. If two mods change the same entry, the later mod wins. Merged archives live in `cache/arcmerge/`.
+- Archive merging combines changes to different entries in archives such as `resident_eng.arc`. Upstream 0.14.0 also supports partial `.arc` overlays that preserve untouched original entries. If two mods change the same entry, the later mod wins. Merged archives live in `cache/arcmerge/`.
 - Without an order file, mods load alphabetically. A hand-written `mods/load_order.txt` lists only the mods to load. In the **Mods** tab, you can enable or disable mods, change their order and review conflicts. Newly added mods are included unless you disable them. You can also use the suggested order. Save, then restart.
 - The port supports exefs `.pchtxt`, IPS and IPS32 patches and mod code modules. Patched functions and extra modules may run in the interpreter, so check `[mods]` diagnostics rather than assuming every patch works.
 - Forge `.nro` plugins load from a mod's `romfs/nativeNX/plugins/`, and the port handles the recognized Forge loader itself. Insert opens the Forge menu, though a mod can configure another key. Compatibility depends on the plugin, so check `[forge]` diagnostics.
@@ -148,6 +148,15 @@ Build on a **Linux x86-64 PC** with Git and a working local Docker installation.
 
 The build creates `dist/LinuxARM64-MHGURecomp.<version>.tar.gz` and `dist/SHA256SUMS`. It uses the stable upstream version pinned in this checkout, which you can check with `bash tools/upstream-version.sh`. Release builds need full Git history and network access to verify upstream tags.
 
+To build and publish from my clean, current master checkout, I authenticate with GitHub CLI and add `--publish`. This also needs Docker buildx and host `llvm-objdump`:
+
+```bash
+gh auth login
+bash tools/build-linux-release.sh --game "$GAME_DIR" --jobs 2 --publish
+```
+
+Publication requires full ARM64 validation and a verified tools image for the exact source SHA. The dump stays local. The command uploads only the checked package and `SHA256SUMS`. It does not replace an existing release with different content. See [publication checks and recovery](docs/MAINTAINING.md#local-build-and-privacy).
+
 ## Install
 
 Extract the package into a new directory on your compatible ARM64 Linux device. Copy `exefs/` and the merged `romfs/` from your complete 1.4.0 dump into `data/`, then run `./mhgurecomp`. The release includes neither a dump nor a bonus donor save. You can also add `mhgurecomp` to Steam as a non-Steam game without a compatibility layer. I have used it this way on ArmadaOS.
@@ -156,7 +165,7 @@ Extract the package into a new directory on your compatible ARM64 Linux device. 
 
 - Settings: `mhgurecomp.ini`, generated beside the executable on first start.
 - Mods, cheats, screenshots and shader caches: `mods/`, `cheats/`, `shots/` and `cache/` beside the executable in the normal standalone layout.
-- Saves: `$XDG_DATA_HOME/MHGURecomp/save/`, or `~/.local/share/MHGURecomp/save/` by default. Custom environment overrides can change the normal locations.
+- Saves: `$XDG_DATA_HOME/MHGURecomp/save/`, or `~/.local/share/MHGURecomp/save/` by default. In 0.14.0, **Menu Options > Save folder** selects another folder containing `save_0`. Back up and copy existing saves yourself, then save settings and restart. See [save folders](docs/SETTINGS_UI.md#save-folder). Custom environment overrides can change the normal locations.
 - To import your own save, close the game, back up the destination and copy `system` and `system_backup` into the save directory's `save_0/`. Keep a backup before using mods, cheats or bonus donors.
 - Diagnostics: `log.txt` for non-terminal launches, or terminal output when started interactively. Do not publish saves, dumps or unredacted logs.
 
@@ -166,7 +175,7 @@ I do not build or ship a binary updater, even though the inherited **Updates** o
 
 ## Maintenance
 
-Automation checks for published stable upstream releases every six hours and merges compatible releases into `master` only after full ARM64 validation. Normal fork edits run quick checks. Outside upstream updates, full Docker/QEMU validation runs only when requested manually.
+Automation checks for published stable upstream releases every hour and merges compatible releases into `master` only after full ARM64 validation. An unchanged release does not start another build. Normal fork edits run quick checks. Outside upstream updates, full Docker/QEMU validation runs only when requested manually.
 
 [Maintenance](docs/MAINTAINING.md) · [Device requirements and troubleshooting](docs/BUILD-LINUX-ARM64.md) · [Settings](docs/SETTINGS_UI.md)
 

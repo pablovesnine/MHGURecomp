@@ -236,7 +236,7 @@ def main():
     with open(os.path.join(work, 'pattern.bin'), 'wb') as f:
         f.write(PATTERN)
     exe = os.path.join(work, 'harness.exe')
-    cmd = shlex.split(args.cc) + ['-O1', '-fno-strict-aliasing', '-ffp-contract=off'] + shlex.split(args.genarch) + ['-w',
+    cmd = shlex.split(args.cc) + ['-O1', '-fno-strict-aliasing', '-ffp-contract=off', '-fsigned-char'] + shlex.split(args.genarch) + ['-w',
            f'-I{os.path.join(ROOT, "runtime")}', '-o', exe, os.path.join(HERE, 'test_harness.c'),
            os.path.join(work, 'tests.c'), os.path.join(ROOT, 'runtime', 'simd_int.c'),
            os.path.join(ROOT, 'runtime', 'neon.c')] + ([os.path.join(ROOT, 'runtime', 'interp.c')] if args.interp else [])

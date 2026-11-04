@@ -300,6 +300,102 @@ class SyncTests(unittest.TestCase):
             self.worker.prepare()
         self.assertFalse((self.repo / ".git/MERGE_HEAD").exists())
 
+    def test_root_readme_translations_removed_without_changing_fork_readme(self):
+        self.commit("README.md", "fork-owned documentation\n")
+        self.git(self.writer, "push", "origin", "master")
+        self.git(self.writer, "reset", "--hard", "HEAD~1")
+        translations = ("README.es.md", "README.pt-BR.md", "README.zh_Hant.md",
+                        "README.fil.md")
+        for path in translations:
+            self.commit(path, "upstream translation\n")
+        self.commit("README.md", "upstream documentation\n")
+        self.publish()
+        self.worker.refresh()
+        result = self.candidate()
+        self.assertEqual(self.git(self.repo, "show", result["sha"] + ":README.md"),
+                         "fork-owned documentation")
+        for path in translations:
+            with self.subTest(path=path):
+                self.assertEqual(self.git(self.repo, "ls-tree", result["sha"], "--", path), "")
+                self.assertIn(path, result["omitted"])
+        self.worker.promote(result["sha"], result["base"], result["upstream"], result["policy"])
+
+    def test_explicit_fork_translation_protection_precedes_locale_rule(self):
+        policy = json.loads((self.writer / sync.POLICY).read_text())
+        policy["keep"]["files"].append("README.es.md")
+        self.commit(sync.POLICY, json.dumps(policy))
+        self.commit("README.es.md", "fork-owned Spanish documentation\n")
+        self.git(self.writer, "update-index", "--chmod=+x", "README.es.md")
+        self.git(self.writer, "commit", "-m", "Retain fork-owned executable mode")
+        base = self.git(self.writer, "rev-parse", "HEAD")
+        self.git(self.writer, "push", "origin", "master")
+        self.git(self.writer, "reset", "--hard", self.initial)
+        self.commit("README.es.md", "upstream Spanish documentation\n")
+        self.publish()
+        self.worker.refresh()
+        result = self.candidate()
+        self.assertEqual(sync.classify(policy, "README.es.md"), "keep")
+        self.assertEqual(self.git(self.repo, "ls-tree", result["sha"], "--", "README.es.md"),
+                         self.git(self.writer, "ls-tree", base, "--", "README.es.md"))
+
+    def test_nested_readme_translation_is_not_automatically_classified(self):
+        self.commit("translations/README.es.md", "not a trusted root translation\n")
+        self.publish()
+        self.worker.refresh()
+        with self.assertRaisesRegex(sync.Intervention, "Unclassified"):
+            self.worker.prepare()
+
+    def test_readme_translation_shaped_directory_cannot_hide_code(self):
+        self.commit("README.es.md/injected.c", "unreviewed code\n")
+        self.publish()
+        self.worker.refresh()
+        with self.assertRaisesRegex(sync.Intervention, "Unclassified"):
+            self.worker.prepare()
+
+    def test_real_fork_policy_retains_only_shared_linux_icon(self):
+        policy = json.loads((SCRIPT.parent / "fork-policy.json").read_text())
+        policy["shared"]["files"] += ["common", "fork", "upstream", "human"]
+        self.commit(sync.POLICY, json.dumps(policy))
+        self.git(self.writer, "push", "origin", "master")
+        self.git(self.writer, "reset", "--hard", "HEAD~1")
+        shared = "extras/icon/mhgurecomp-128.png"
+        retired = ("extras/icon/mhgurecomp.ico", "extras/icon/mhgurecomp.rc",
+                   "extras/icon/mhgurecomp-updater-128.png",
+                   "extras/icon/mhgurecomp-updater.ico", "extras/icon/mhgurecomp-updater.rc")
+        for path in (shared, *retired):
+            self.commit(path, "upstream icon fixture\n")
+        self.publish()
+        self.worker.refresh()
+        result = self.candidate()
+        self.assertEqual(self.git(self.repo, "show", result["sha"] + ":" + shared),
+                         "upstream icon fixture")
+        for path in retired:
+            with self.subTest(path=path):
+                self.assertEqual(self.git(self.repo, "ls-tree", result["sha"], "--", path), "")
+                self.assertIn(path, result["omitted"])
+
+    def test_real_fork_policy_preserves_public_source_tools_and_protected_tests(self):
+        policy = json.loads((SCRIPT.parent / "fork-policy.json").read_text())
+        policy["shared"]["files"] += ["common", "fork", "upstream", "human"]
+        self.commit(sync.POLICY, json.dumps(policy))
+        protected = ("tools/build-linux-release.sh", "tools/upstream-version.sh",
+                     "tools/publish-linux-release.py", "tests/test_release_publish.py",
+                     "tests/test_arm64_runtime.py", "tests/test_arm64_abi.c")
+        for path in protected:
+            self.commit(path, "fork-owned source fixture\n")
+        self.git(self.writer, "push", "origin", "master")
+        self.git(self.writer, "reset", "--hard", self.initial)
+        for path in protected:
+            self.commit(path, "upstream must not replace trusted fork source\n")
+        self.publish()
+        self.worker.refresh()
+        result = self.candidate()
+        for path in protected:
+            with self.subTest(path=path):
+                self.assertEqual(self.git(self.repo, "show", result["sha"] + ":" + path),
+                                 "fork-owned source fixture")
+        self.worker.promote(result["sha"], result["base"], result["upstream"], result["policy"])
+
     def test_promote_exact_validated_candidate(self):
         self.upstream_change()
         result = self.candidate()

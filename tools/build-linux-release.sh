@@ -5,7 +5,7 @@ umask 077
 die() { echo "linux-release: $*" >&2; exit 1; }
 usage() {
   cat <<'HELP'
-Usage: bash tools/build-linux-release.sh --game DIR [--version VERSION] [--jobs N]
+Usage: bash tools/build-linux-release.sh --game DIR [--version VERSION] [--jobs N] [--publish]
        bash tools/build-linux-release.sh --check --version 0 [--jobs N]
 
 Build Linux ARM64 only, on a Linux x86_64 host with local Docker.
@@ -16,6 +16,9 @@ the tools locally from that exact tracked commit if the image is unavailable.
 --image NAME overrides the image name; --skip-image-build requires it to exist.
 --rebuild-image forces a local tools build (incompatible with --skip-image-build).
 Tracked changes must be committed first. Untracked files are never exported.
+--publish explicitly publishes a verified package using existing local gh auth.
+It requires clean current master, full ARM64 checks and the verified GHCR image.
+Publish builds use a fresh private output directory, retained for safe retries.
 HELP
 }
 
@@ -26,10 +29,12 @@ mode=release
 image=''
 skip_build=false
 rebuild=false
+publish=false
 while (($#)); do
   case "$1" in
     --help|-h) usage; exit 0 ;;
     --check) mode=check; shift ;;
+    --publish) publish=true; shift ;;
     --skip-image-build) skip_build=true; shift ;;
     --rebuild-image) rebuild=true; shift ;;
     --game|--version|--jobs|--image)
@@ -45,6 +50,7 @@ while (($#)); do
     *) die "unknown option: $1" ;;
   esac
 done
+[[ $publish == false || $mode == release ]] || die "--publish requires release mode"
 [[ -z $version || $version =~ ^[0-9]+(\.[0-9]+)*$ ]] || die "use a numeric release version"
 [[ $mode != check || -n $version ]] || die "use a numeric release version"
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || die "jobs must be a positive integer"
@@ -80,6 +86,15 @@ if [[ $mode == release ]]; then
 fi
 revision=$(git rev-parse HEAD)
 [[ $revision =~ ^[0-9a-f]{40}$ ]] || die "expected a full SHA-1 source revision"
+if [[ $publish == true ]]; then
+  git cat-file -e HEAD:tools/publish-linux-release.py \
+    || die "commit the publisher before using --publish"
+  [[ $(git symbolic-ref --quiet --short HEAD) == master &&
+     -z $(git status --porcelain=v1 --untracked-files=all) ]] \
+    || die "--publish requires a clean master checkout"
+  command -v gh >/dev/null || die "install gh and authenticate locally"
+  gh auth status --hostname github.com || die "authenticate locally with gh first"
+fi
 default_image=false
 if [[ -z $image ]]; then
   image="ghcr.io/pablovesnine/mhgurecomp-builder:$revision"
@@ -162,8 +177,13 @@ for library in ffmpeg sdl3 shaderc; do
 done
 mounts=(-v "$cache:/work:Z")
 if [[ $mode == release ]]; then
-  mkdir -p "$root/dist"
-  mounts+=(-v "$game:/game:ro,z" -v "$root/dist:/out:Z")
+  output="$root/dist"
+  if [[ $publish == true ]]; then
+    # Never publish stale dist/ files after an incomplete/failed container build.
+    output=$(mktemp -d "$work/publish.XXXXXX")
+  fi
+  mkdir -p "$output"
+  mounts+=(-v "$game:/game:ro,z" -v "$output:/out:Z")
 fi
 echo "linux-release: sources $revision"
 echo "linux-release: builder $image_id"
@@ -171,5 +191,11 @@ echo "linux-release: builder $image_id"
 "${engine_cmd[@]}" run --rm --platform linux/amd64 \
   "${user_args[@]}" "${mounts[@]}" "$image_id" "$mode" "$version" "$jobs" "$revision" "$image_id"
 if [[ $mode == release ]]; then
-  echo "linux-release: LinuxARM64-MHGURecomp.$version.tar.gz and SHA256SUMS are in dist/"
+  if [[ $publish == true ]]; then
+    echo "linux-release: LinuxARM64-MHGURecomp.$version.tar.gz and SHA256SUMS are in $output/"
+    # Keep this fresh output on failure: the standalone publisher can retry it.
+    python3 "$root/tools/publish-linux-release.py" --dist "$output"
+  else
+    echo "linux-release: LinuxARM64-MHGURecomp.$version.tar.gz and SHA256SUMS are in dist/"
+  fi
 fi

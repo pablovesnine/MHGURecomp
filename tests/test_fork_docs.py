@@ -38,6 +38,20 @@ def heading_anchors(path):
 
 
 class ForkDocumentationTests(unittest.TestCase):
+    def test_save_folder_and_release_boundaries_are_documented(self):
+        readme = (ROOT / "README.md").read_text()
+        guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
+        maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
+        for text in ("SaveLocation", "save_0", "restart", "copy", "MHGU_SAVE_DIR"):
+            self.assertIn(text, guide)
+        for text in ("Choose folder", "Use the default folder", "Save and restart"):
+            self.assertIn(text, guide)
+        self.assertIn("MenuChord", guide)
+        self.assertIn("0.13.1", readme.split("## Screenshots", 1)[1])
+        self.assertIn("--publish", readme)
+        self.assertIn("--dry-run", maintaining)
+        self.assertNotIn("every six hours", readme + maintaining)
+
     def test_reported_device_results_and_original_screenshots(self):
         readme = (ROOT / "README.md").read_text()
         for text in ("AYN Odin 3", "ArmadaOS 20261010", "120 FPS", "Eco",

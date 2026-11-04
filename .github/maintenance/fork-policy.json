@@ -4,12 +4,13 @@
     "files": [
       "README.md", "Makefile", ".gitignore",
       "tools/.dockerignore", "tools/desktop-arch.mk", "tools/dist.py",
-      "tools/build-linux-release.sh", "tools/upstream-version.sh",
+      "tools/build-linux-release.sh", "tools/upstream-version.sh", "tools/publish-linux-release.py",
       "updater/updater.h",
       "tests/test_build_arch.py", "tests/test_linux_release.py", "tests/test_fork_docs.py",
       "tests/test_upstream_sync.py", "tests/test_automation_workflows.py",
       "tests/test_upstream_version.py", "tests/test_release_sync.py",
-      "tests/test_repository_layout.py"
+      "tests/test_repository_layout.py", "tests/test_release_publish.py",
+      "tests/test_arm64_runtime.py", "tests/test_arm64_abi.c"
     ],
     "prefixes": [".github/", "docs/", "tools/docker/"]
   },
@@ -20,13 +21,17 @@
       "update-build-arm64.sh", "tests/test_update_build.py",
       "run-debug.bat", "run-game.bat",
       "tools/sync-upstream.py", "tools/fork-policy.json",
-      "tools/upstream-release.tsv", "tools/vkreplay.c"
+      "tools/upstream-release.tsv", "tools/vkreplay.c",
+      "extras/icon/mhgurecomp.ico", "extras/icon/mhgurecomp.rc",
+      "extras/icon/mhgurecomp-updater-128.png", "extras/icon/mhgurecomp-updater.ico",
+      "extras/icon/mhgurecomp-updater.rc"
     ],
     "prefixes": ["android/", "server/", "extras/cheats/", "updater/"]
   },
   "shared": {
     "files": [
       "LICENSE", "THIRD_PARTY_NOTICES", "extras/pipelines.list", "updater/sha256.c",
+      "extras/icon/mhgurecomp-128.png",
       "tools/disasm.py", "tools/gamelib_entry.c", "tools/gen.py", "tools/hle_list.py",
       "tools/imgui_thunks.py", "tools/lifter.py", "tools/mtarc.py", "tools/neon.py",
       "tools/nso.py", "tools/requirements.txt", "tools/retool.py", "tools/samples.py",

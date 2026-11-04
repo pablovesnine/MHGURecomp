@@ -18,7 +18,7 @@ The experimental Vulkan replay diagnostic (vkreplay.c) is retired. `tools/vkprob
 
 ## Automatic upstream updates
 
-**Synchronize stable upstream releases after ARM64 validation** checks published Releases from `morerokk/MHGURecomp` every six hours and after pushes to master. You can also run it manually from Actions. Drafts, prereleases, standalone tags and commits on upstream's development master do not trigger integration.
+**Synchronize stable upstream releases after ARM64 validation** checks published Releases from `morerokk/MHGURecomp` every hour and after pushes to master. You can also run it manually from Actions. Drafts, prereleases, standalone tags and commits on upstream's development master do not trigger integration.
 
 1. Select the most recently published stable release (ID breaks time ties), validate its numeric version and pin its exact tag object and commit.
 2. Prepare a policy-aware merge using the previous recorded release as its explicit three-way base, not Git's historical merge base.
@@ -67,4 +67,23 @@ Release builds use the stable version pinned in `.github/maintenance/upstream-re
 
 The version number stays the same between releases, while metadata records the exact SHA, tools image and program hashes. Verify checksums only after a successful build, because a failed attempt may leave old archives with the same version.
 
-`.linux-release/`, logs and `dist/` are local outputs, not tracked sources. Never attach dumps, generated sources or private build folders to Issues. I upload releases manually, and automation creates no fork tags or GitHub Releases. CI publishes only the tools image. The project's license does not authorize redistribution of game-derived code. Keep licenses and required third-party sources intact.
+`.linux-release/`, logs and `dist/` are local outputs, not tracked sources. Never attach dumps, generated sources or private build folders to Issues. CI publishes only the tools image, without a dump or game package.
+
+I can publish a local build with `--publish` on the public build command. This needs authenticated GitHub CLI, Docker buildx and host `llvm-objdump`. Publication requires a clean current master checkout, verified upstream identity, full ARM64 validation and tools-image provenance for that exact SHA.
+
+Publish builds retain their checked outputs in a fresh private directory and print its path. The standalone publisher can check or retry those same files:
+
+```bash
+python3 tools/publish-linux-release.py --dist .linux-release/publish.EXAMPLE --dry-run
+python3 tools/publish-linux-release.py --dist .linux-release/publish.EXAMPLE
+```
+
+`--dry-run` performs preflight checks without creating a tag, release or asset. The publisher checks the archive allowlist, ARM64 programs, metadata and checksums before creating a new draft. It uploads only the package and `SHA256SUMS`, verifies their hashes, then publishes. A failed upload leaves a recoverable draft. Retry the same files, not a rebuild with different archive timestamps. Different existing tags or assets stop publication rather than being replaced. Existing 0.13.1 assets remain unchanged.
+
+Changing the guest base or signed-char flags requires rebuilding both the runtime and the generated game library. The game-library identity includes the relevant headers and flags, so an old library cannot be relabeled safely. The public build uses revision-separated work directories.
+
+The project's license does not authorize redistribution of game-derived code. Keep licenses and required third-party sources intact.
+
+## ARM64 compatibility
+
+The signed-char and 64-GiB guest-base corrections follow the ARM64 approach in [cerroverb's 0.14.0.1 source](https://github.com/cerroverb/MHGURecomp/tree/267c2be968128bf0d9d2dbd82b2e4e35e71ef6b6). The guest window remains 4 GiB. This fork already had the BC fallback, ARM64 glibc wrappers and cross-compiler test controls. I kept those implementations instead of adding duplicates. These are compatibility changes, not measured FPS or build-speed improvements.

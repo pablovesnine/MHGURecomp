@@ -151,7 +151,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("github.event_name == 'push'", job(self.ci, "publish"))
 
     def test_no_pr_and_explicit_validation_publication(self):
-        self.assertIn("'23 */6 * * *'", self.sync)
+        self.assertIn("'23 * * * *'", self.sync)
+        self.assertNotIn("'23 */6 * * *'", self.sync)
+        self.assertIn("group: upstream-sync-master", self.sync)
         self.assertIn("cancel-in-progress: false", self.sync)
         self.assertIn("retry_validation:", self.sync)
         self.assertIn("uses: ./.github/workflows/linux-builder.yml", job(self.sync, "validate"))
@@ -216,7 +218,10 @@ class WorkflowTests(unittest.TestCase):
                      ".github/maintenance/fork-policy.json",
                      ".github/maintenance/upstream-release.tsv",
                      "tools/docker/new.sh", "updater/updater.h",
-                     "tools/upstream-version.sh", "tests/test_upstream_version.py"):
+                     "tools/upstream-version.sh", "tests/test_upstream_version.py",
+                     "tools/build-linux-release.sh", "tools/publish-linux-release.py",
+                     "tests/test_release_publish.py", "tests/test_arm64_runtime.py",
+                     "tests/test_arm64_abi.c"):
             self.assertEqual(sync.classify(policy, path), "keep", path)
         for path in ("android/new.c", "server/new.c", "extras/cheats/new.txt",
                      "runtime/platform/android.c", "runtime/platform/windows.c",
@@ -224,12 +229,28 @@ class WorkflowTests(unittest.TestCase):
                      "update-build-arm64.sh", "tests/test_update_build.py",
                      "run-debug.bat", "run-game.bat", "tools/sync-upstream.py",
                      "tools/fork-policy.json", "tools/upstream-release.tsv",
-                     "tools/vkreplay.c"):
+                     "tools/vkreplay.c", "extras/icon/mhgurecomp.ico",
+                     "extras/icon/mhgurecomp.rc", "extras/icon/mhgurecomp-updater-128.png",
+                     "extras/icon/mhgurecomp-updater.ico", "extras/icon/mhgurecomp-updater.rc"):
             self.assertEqual(sync.classify(policy, path), "remove", path)
-        for path in ("updater/sha256.c", "runtime/new.c", "third_party/new.c"):
+        for path in ("updater/sha256.c", "runtime/new.c", "third_party/new.c",
+                     "extras/icon/mhgurecomp-128.png"):
             self.assertEqual(sync.classify(policy, path), "shared", path)
         self.assertIsNone(sync.classify(policy, "unexpected-root.c"))
         self.assertIsNone(sync.classify(policy, ".github-evil/foo"))
+
+    def test_only_narrow_root_translation_names_are_automatically_retired(self):
+        policy = sync.validate_policy(json.loads(
+            (ROOT / ".github/maintenance/fork-policy.json").read_text()))
+        for path in ("README.es.md", "README.fil.md", "README.pt-BR.md", "README.zh_Hant.md"):
+            self.assertEqual(sync.classify(policy, path), "remove", path)
+        for path in ("translations/README.es.md", "README.es.md/code.c", "README.es.c",
+                     "README.ES.md", "README.english.md", "README.e.md", "README.es-1.md",
+                     "README.es.md.sh", "README.es-.md", "extras/icon/unreviewed.png",
+                     "tools/unreviewed-source.py"):
+            self.assertIsNone(sync.classify(policy, path), path)
+        policy["keep"]["files"].append("README.es.md")
+        self.assertEqual(sync.classify(policy, "README.es.md"), "keep")
 
     def test_dependabot_remains_monthly(self):
         text = (ROOT / ".github/dependabot.yml").read_text()

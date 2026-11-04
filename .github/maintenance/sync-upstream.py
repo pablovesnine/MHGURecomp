@@ -33,6 +33,7 @@ STATE_KEYS = ("schema", "algorithm", "repository", "release_id", "version", "tag
 RELEASE_KEYS = ("release_id", "version", "tag", "tag_oid", "commit", "published_at")
 ISSUE = 2
 STATE_MARKER = "<!-- mhgu-sync-state "
+ROOT_README_TRANSLATION = re.compile(r"^README\.[a-z]{2,3}(?:[-_][A-Za-z]{2,4})?\.md$")
 
 
 class Intervention(RuntimeError):
@@ -162,6 +163,10 @@ def classify(policy, path):
         return "shared"
     if path in policy["remove"]["files"] or any(
             path.startswith(p) for p in policy["remove"]["prefixes"]):
+        return "remove"
+    # Trusted root-only documentation exception, never a general README glob.
+    # Explicit fork ownership above always takes precedence.
+    if ROOT_README_TRANSLATION.fullmatch(path):
         return "remove"
     if any(path.startswith(p) for p in policy["shared"]["prefixes"]):
         return "shared"
@@ -337,11 +342,26 @@ class SyncGit:
         state = dict(context["state"], **context["release"], fork_base=context["base"])
         return release_state_bytes(state)
 
+    def verify_translation_modes(self, ref, policy):
+        # Check source trees too: dropping a path from the candidate must not
+        # conceal an upstream executable, symlink or other non-document object.
+        for entry in self.run("ls-tree", "-rz", exact(ref)).stdout.split("\0"):
+            if not entry:
+                continue
+            metadata, path = entry.split("\t", 1)
+            if (ROOT_README_TRANSLATION.fullmatch(path)
+                    and classify(policy, path) == "remove"
+                    and not metadata.startswith("100644 blob ")):
+                raise Intervention("Root README translation must be a regular non-executable file: "
+                                   + repr(path))
+
     def merge_tree(self, context, policy):
         """Compute the only promotable tree without touching HEAD, index or worktree."""
         base, upstream, tracked = context["base"], context["upstream"], context["state"]["commit"]
         if classify(policy, RELEASE_STATE) != "keep":
             raise Intervention("Release state must be explicitly protected by trusted fork policy.")
+        for ref in dict.fromkeys((base, tracked, upstream)):
+            self.verify_translation_modes(ref, policy)
         # --merge-base is mandatory: ordinary ancestry would skip reverted changes.
         result = self.run("merge-tree", "--write-tree", "--name-only", "-z",
                           "--merge-base=" + tracked, base, upstream, check=False)
@@ -360,6 +380,7 @@ class SyncGit:
             kind = classify(policy, path)
             if kind not in ("keep", "remove"):
                 raise Intervention("Shared/unknown merge conflict requires intervention: " + repr(path))
+        self.verify_translation_modes(tree, policy)
         original = self.paths(base)
         paths = original | self.paths(tracked) | self.paths(upstream) | self.paths(tree)
         omitted = []

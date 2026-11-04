@@ -1,6 +1,8 @@
 """Stable-release selection and explicit-base integration, entirely offline."""
 import copy
+from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -71,6 +73,58 @@ class ReleaseTests(unittest.TestCase):
         (self.repo / ".git/info/grafts").write_text(self.initial + "\n")
         with self.assertRaisesRegex(sync.Intervention, "Grafted"):
             self.worker.refresh()
+
+    def unsafe_translation_release(self, mode):
+        path = self.writer / "README.es.md"
+        if mode == "symlink":
+            path.symlink_to("README.md")
+        else:
+            path.write_text("#!/bin/sh\nexit 1\n")
+            path.chmod(0o755)
+        self.git(self.writer, "add", "README.es.md")
+        self.git(self.writer, "commit", "-m", "Unsafe translation file mode")
+        self.publish()
+        self.worker.refresh()
+
+    def assert_unsafe_translation_preparation_blocks(self, mode):
+        self.unsafe_translation_release(mode)
+        with self.assertRaisesRegex(sync.Intervention, "regular non-executable"):
+            self.worker.prepare()
+        self.assertIsNone(self.worker.remote_tip(sync.BRANCH))
+
+    def test_executable_root_translation_blocks_preparation(self):
+        self.assert_unsafe_translation_preparation_blocks("executable")
+
+    def test_symlink_root_translation_blocks_preparation(self):
+        self.assert_unsafe_translation_preparation_blocks("symlink")
+
+    def assert_unsafe_translation_promotion_blocks(self, mode):
+        self.unsafe_translation_release(mode)
+        context = self.worker.context()
+        # Simulate a legacy candidate that silently stripped the unsafe path.
+        # Its bot identity, exact parents and generated state are otherwise valid.
+        with tempfile.TemporaryDirectory() as directory:
+            env = {"GIT_INDEX_FILE": str(Path(directory) / "index")}
+            self.worker.run("read-tree", context["base"], env_extra=env)
+            state_oid = self.worker.run(
+                "hash-object", "-w", "--stdin", binary=True,
+                input=self.worker.generated_state(context)).stdout.decode().strip()
+            self.worker.run("update-index", "--add", "--cacheinfo", "100644", state_oid,
+                            sync.RELEASE_STATE, env_extra=env)
+            tree = self.worker.run("write-tree", env_extra=env).stdout.strip()
+        sha = self.worker.git("commit-tree", tree, "-p", context["base"],
+                              "-p", context["upstream"], "-m", self.worker.subject(context))
+        self.git(self.repo, "push", "origin", f"{sha}:refs/heads/{sync.BRANCH}")
+        with self.assertRaisesRegex(sync.Intervention, "regular non-executable"):
+            self.worker.promote(sha, context["base"], context["upstream"], context["policy"])
+        self.assertEqual(self.worker.remote_tip("master"), context["base"])
+        self.assertEqual(self.worker.remote_tip(sync.BRANCH), sha)
+
+    def test_removed_executable_translation_still_blocks_promotion(self):
+        self.assert_unsafe_translation_promotion_blocks("executable")
+
+    def test_removed_symlink_translation_still_blocks_promotion(self):
+        self.assert_unsafe_translation_promotion_blocks("symlink")
 
     def test_numeric_upgrade_at_same_commit_is_two_parent_candidate(self):
         self.git(self.writer, "checkout", "--detach", self.initial)

@@ -8,9 +8,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef __ANDROID__
-#define GUEST_BASE 0x1000000000ull   // 64 GB: most Android kernels give a process 512 GB (39-bit addresses), and map
-                                     // its libraries and heap near the top of that
+#if defined(__aarch64__)
+#define GUEST_BASE 0x1000000000ull   // 64 GiB: the 4 GiB guest window also fits kernels with 39-bit user addresses.
 #else
 #define GUEST_BASE 0x10000000000ull  // 1 TB: claimed at startup (runtime/main.c)
 #endif

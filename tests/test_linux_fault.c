@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "cpu.h"
 #include "platform.h"
 #include "platform/linux_context.h"
 
@@ -60,8 +61,11 @@ int main(void) {
     context.uc_mcontext.gregs[REG_ERR] = 2;
     assert(linux_fault_write(&context) == 1);
 #endif
-    const uint64_t base = UINT64_C(0x10000000000);
+    const uint64_t base = GUEST_BASE;
     assert(plat_reserve_guest(base, UINT64_C(0x100000000)));
+    // A second reservation must fail without replacing the original window.
+    assert(!plat_reserve_guest(base, UINT64_C(0x100000000)));
+    assert((uintptr_t)G2H(UINT32_MAX) == base + UINT32_MAX);
     plat_crash_handler_install();
     plat_touch_hook = touch;
     volatile uint32_t *read_page = (void *)(uintptr_t)(base + 0x1000);
@@ -73,6 +77,13 @@ int main(void) {
     uint64_t end;
     assert(plat_committed((uint64_t)(uintptr_t)read_page, &end));
     assert(plat_committed((uint64_t)(uintptr_t)write_page, &end));
+    volatile uint32_t *last_word = G2H(UINT32_MAX - 3);
+    *last_word = 0xaabbccdd;
+    assert(*last_word == 0xaabbccdd);
+    assert(touches == 3);
+    assert(plat_committed(base + UINT32_MAX, &end));
+    assert(end == base + UINT64_C(0x100000000));
+    assert(!plat_committed(base + UINT64_C(0x100000000), &end));
     pid_t child = fork();
     assert(child >= 0);
     if (!child) {
@@ -80,6 +91,15 @@ int main(void) {
         _exit(44);
     }
     int status;
+    assert(waitpid(child, &status, 0) == child);
+    assert(WIFEXITED(status) && WEXITSTATUS(status) == 42);
+    child = fork();
+    assert(child >= 0);
+    if (!child) {
+        volatile uint32_t *outside = (void *)(uintptr_t)(base + UINT64_C(0x100000000));
+        (void)*outside;
+        _exit(44);
+    }
     assert(waitpid(child, &status, 0) == child);
     assert(WIFEXITED(status) && WEXITSTATUS(status) == 42);
     puts("actual lazy guest-page faults and fatal signal context: PASS");
