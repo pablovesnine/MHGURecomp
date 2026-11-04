@@ -47,6 +47,8 @@ Full validation runs for a new eligible stable release or when you manually requ
 
 The tools image runs on a Linux x86_64 build PC and cross-compiles for ARM64. Keep that distinction clear in the build internals, because ARM64 is the only product. The build needs Docker Engine with a local Unix socket. Fedora's installed Moby engine works, so there is no need to replace a working installation.
 
+Source downloads have connection, transfer and retry limits. If FFmpeg's primary host is unavailable, the build can use the explicit MacPorts source mirror. Both URLs must match the same pinned SHA-256. A checksum mismatch stops the build immediately, and failed transfers leave no usable archive.
+
 Tools images use `ghcr.io/pablovesnine/mhgurecomp-builder:<full-source-SHA>`. The publisher checks master, image identity, platform and source labels without executing candidate code. Public images need no registry login. If publication fails after master has advanced, retry publication for the same validated SHA rather than rolling back source history.
 
 To run **Publish a validated master tools image** manually, use the source SHA, image ID, artifact name and run ID from the builder summary. The transport artifact lasts one day. If it has expired, a manual master CI run can rebuild, validate and publish. After a successful manual recovery, close issue #2. A no-op sync deliberately leaves an unresolved publication warning open.

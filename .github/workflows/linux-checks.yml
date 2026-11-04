@@ -31,8 +31,8 @@ jobs:
           persist-credentials: false
       - name: Lint shell, workflows and offline regressions
         run: |
-          bash -n tools/build-linux-release.sh tools/upstream-version.sh tools/docker/*.sh
-          shellcheck tools/build-linux-release.sh tools/upstream-version.sh tools/docker/*.sh
+          bash -n tools/build-linux-release.sh tools/upstream-version.sh tools/fetch-verified.sh tools/docker/*.sh
+          shellcheck tools/build-linux-release.sh tools/upstream-version.sh tools/fetch-verified.sh tools/docker/*.sh
           curl --fail --location --silent --show-error --retry 3 \
             https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
             -o "$RUNNER_TEMP/actionlint.tar.gz"

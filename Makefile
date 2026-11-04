@@ -272,15 +272,13 @@ endef
 endif
 
 # the bundled libraries' sources (see FFMPEG, SDL3 and SHADERC above): downloaded once, checked against their SHA-256
-# FETCH(file, url, sha256)
+# FETCH(file, url, sha256, optional checksum-equivalent mirror)
 define FETCH
 $(1):
 	@mkdir -p $$(dir $$@)
-	curl -fL --retry 3 -o $$@.part $(2)
-	echo "$(3)  $$@.part" | sha256sum -c -
-	mv -f $$@.part $$@
+	bash tools/fetch-verified.sh "$$@" "$(3)" "$(2)" $(4)
 endef
-$(eval $(call FETCH,$(FFMPEG_TAR),https://ffmpeg.org/releases/ffmpeg-$(FFMPEG_VER).tar.xz,$(FFMPEG_SHA256)))
+$(eval $(call FETCH,$(FFMPEG_TAR),https://ffmpeg.org/releases/ffmpeg-$(FFMPEG_VER).tar.xz,$(FFMPEG_SHA256),https://distfiles.macports.org/ffmpeg/ffmpeg-$(FFMPEG_VER).tar.xz))
 $(eval $(call FETCH,$(SDL3_TAR),https://github.com/libsdl-org/SDL/releases/download/release-$(SDL3_VER)/SDL3-$(SDL3_VER).tar.gz,$(SDL3_SHA256)))
 $(eval $(call FETCH,third_party/shaderc/shaderc-$(SHADERC_VER).tar.gz,https://github.com/google/shaderc/archive/refs/tags/v$(SHADERC_VER).tar.gz,f06ce5bcca94e5df7f34e115743597d0ad2e13c5fe9213c67dc8c76031241947))
 $(eval $(call FETCH,third_party/shaderc/glslang-$(GLSLANG_VER).tar.gz,https://github.com/KhronosGroup/glslang/archive/refs/tags/$(GLSLANG_VER).tar.gz,9c09b901149c729df745057dafa815278aaa101b84d2b6e14f16a42de52f97f2))
