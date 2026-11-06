@@ -104,21 +104,30 @@ class BuildTests(unittest.TestCase):
         self.assertIn("-DHAS_POLL", compiles[1])
 
     def test_zstd_is_verified_cross_compiled_and_packaged(self):
-        result = subprocess.run(
-            ["make", "-n", "build/licenses/zstd.txt", "HOST_ARCH=x86_64",
-             "SYSROOT=/test/sysroot", "O=/test/objects",
-             "SDL3=system", "SHADERC=system"],
-            cwd=ROOT, capture_output=True, text=True,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        for token in (
-            "tools/fetch-verified.sh", "zstd-1.5.7.tar.gz",
-            "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3",
-            "--target=aarch64-linux-gnu", "--sysroot=/test/sysroot",
-            "-fsigned-char", "-DZSTD_DISABLE_ASM", "llvm-ar rcs",
-            "src/LICENSE",
-        ):
-            self.assertIn(token, result.stdout)
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "zstd-1.5.7.tar.gz"
+            for cached in (False, True):
+                with self.subTest(cached=cached):
+                    if cached:
+                        # Make never executes this explicit public cache fixture.
+                        archive.write_text("cached-file dry-run fixture\n")
+                    # Inspect the whole recipe graph, not cache freshness.
+                    result = subprocess.run(
+                        ["make", "-B", "-n", "build/licenses/zstd.txt",
+                         "HOST_ARCH=x86_64", "SYSROOT=/test/sysroot",
+                         "O=/test/objects", f"ZSTD_TAR={archive}",
+                         "SDL3=system", "SHADERC=system"],
+                        cwd=ROOT, capture_output=True, text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    for token in (
+                        "tools/fetch-verified.sh", "zstd-1.5.7.tar.gz",
+                        "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3",
+                        "--target=aarch64-linux-gnu", "--sysroot=/test/sysroot",
+                        "-fsigned-char", "-DZSTD_DISABLE_ASM", "llvm-ar rcs",
+                        "src/LICENSE",
+                    ):
+                        self.assertIn(token, result.stdout)
         self.assertIn("zstd", load_dist().LICENSES)
         wrapper = (ROOT / "tools/build-linux-release.sh").read_text()
         self.assertIn("for library in ffmpeg sdl3 shaderc zstd;", wrapper)
