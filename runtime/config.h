@@ -98,6 +98,9 @@ typedef struct {
 } Config;
 // The hub server used when ini Server is empty (runtime/net/ldn.c): the project's public one (an Oracle
 // Cloud VM; a DuckDNS name, so it can move without a release). "" = no default.
+// Note: the below server address should ideally only be used by MHGURecomp, or any forks that intend to be fully network-compatible with it.
+// If you are going to use the below server address on Android or iOS (mobile), please ensure that the "default" matchmaking key for public play is passed as `public-phone` and not empty.
+// This is to ensure gameplay remains stable on PC, while still allowing players to opt into crossplay by specifying a matchmaking key themselves.
 #define LDN_DEFAULT_SERVER "morerokk-mhgurecomp-ldnserver.duckdns.org"
 enum { UPDATES_ASK, UPDATES_AUTO, UPDATES_OFF };
 enum { BATTERY_OFF, BATTERY_WITH_FPS, BATTERY_ALONE };
@@ -172,6 +175,15 @@ int config_live_chat_key(void);  // [Controls] ChatKey as an SDL scancode (0: no
 int config_live_bind(int bind, int slot);  // [Keybinds]: one of BIND_*'s keys (Config.binds)
 int config_live_fxaa_mode(void);
 int config_live_smooth_gradients(void);
+float config_live_fsr_sharpness(void);  // [Upscaler] Sharpness, read by each FSR dispatch (nvn/vulkan/fsr.c)
+float config_live_fsr_reactive(void);   // [Upscaler] Reactive, read by each FSR frame (nvn/vulkan/fsr.c)
+void config_live_hp(HpScale *out);      // [Monster HP] and [Village Quests] HubHP as saved now (hle/hpscale.c)
+float config_live_hp_village(void);     // [Village Quests] HubHP as saved now
+int config_live_village_in_hub(void);   // [Village Quests] VillageQuestsInHub (hle/villagehub.c)
+int config_live_ldn_port(void);         // [Multiplayer] Port: the next hub hosted and the next search (net/ldn.c)
+void config_live_ldn_join(char *join, size_t size);  // [Multiplayer] Join: the next search (net/ldn.c)
+int config_live_sync_small_monsters(void);  // [Multiplayer] SyncSmallMonsters (net/emsync.c)
+int config_live_bonus_content(void);    // [Bonus Content] BonusContent: each time the game opens a save (services/bonus.c)
 int config_live_discord(void);         // [Discord] RichPresence
 int config_live_discord_hunter(void);  // [Discord] ShowHunter
 int config_live_share_urgent(void);    // [Multiplayer] ShareUrgentCredit

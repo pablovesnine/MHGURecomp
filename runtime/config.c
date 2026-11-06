@@ -25,7 +25,74 @@
     {SDL_SCANCODE_Q}, {SDL_SCANCODE_E}, {SDL_SCANCODE_TAB}, {SDL_SCANCODE_T}, {SDL_SCANCODE_RETURN, SDL_SCANCODE_KP_ENTER}, \
     {SDL_SCANCODE_BACKSPACE}, {SDL_SCANCODE_UP}, {SDL_SCANCODE_DOWN}, {SDL_SCANCODE_LEFT}, {SDL_SCANCODE_RIGHT},          \
     {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}, {KEY_WHEEL_UP}, {KEY_WHEEL_DOWN}}
-#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, 1920, 1080, 0, 0, 60, 1, 1, 1, FACE_POSITION, 39500, "", 1, 1, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 0, 1, BATTERY_OFF, ""
+#define CONFIG_DEFAULT_VALUES                                                                       \
+    /* [Display] */                                                                                 \
+    .display_mode = DISPLAY_BORDERLESS,                                                             \
+    .width = 1920,                                                                                  \
+    .height = 1080,                                                                                 \
+    .render_w = 0,                                                                                  \
+    .render_h = 0,                                                                                  \
+    .aspect_ratio = 0.0f,                                                                           \
+    .fov = 1.0f,                                                                                    \
+    .ui_anchor = UI_CENTER,                                                                         \
+    /* [Anti-aliasing] */                                                                           \
+    .msaa = 1,                                                                                      \
+    .fxaa = 1,                                                                                      \
+    .fxaa_mode = FXAA_ORIGINAL,                                                                     \
+    /* [Upscaler] */                                                                                \
+    .fsr = 0,                                                                                       \
+    .fsr_quality = FSR_NATIVE,                                                                      \
+    .fsr_sharpness = 0.8f,                                                                          \
+    .fsr_objmotion = 1,                                                                             \
+    .fsr_reactive = 0.9f,                                                                           \
+    .fsr_animsurf = 1,                                                                              \
+    /* [Graphics] */                                                                                \
+    .draw_distance = 1.0f,                                                                          \
+    .smooth_gradients = 0,                                                                          \
+    /* [Performance] */                                                                             \
+    .show_fps = 0,                                                                                  \
+    .show_battery = BATTERY_OFF,                                                                    \
+    .fps = 60,                                                                                      \
+    .vsync = 1,                                                                                     \
+    .shader_prewarm = 1,                                                                            \
+    /* [Controls] */                                                                                \
+    .face_buttons = FACE_POSITION,                                                                  \
+    .menu_confirm = MENU_CONFIRM_ORIGINAL,                                                          \
+    .background_input = 1,                                                                          \
+    .combo_window = COMBO_LENIENT,                                                                  \
+    .chat_key = "/",                                                                                \
+    .menu_chord = 1,                                                                                \
+    /* [Mouse] */                                                                                   \
+    .mouse_sensitivity = 1.0f,                                                                      \
+    /* [Keybinds] */                                                                                \
+    .binds = DEFAULT_BINDS,                                                                         \
+    /* [Multiplayer] */                                                                             \
+    .ldn_port = 39500,                                                                              \
+    .ldn_join = "",                                                                                 \
+    .ldn_server = "",                                                                               \
+    .ldn_key = "",                                                                                  \
+    .sync_small_monsters = 1,                                                                       \
+    .share_urgent = 1,                                                                              \
+    /* [Monster HP, Village Quests] */                                                              \
+    .hp = {{1, 1, 1, 1}, 2},                                                                        \
+    .village_in_hub = 1,                                                                            \
+    /* [Discord] */                                                                                 \
+    .discord = 1,                                                                                   \
+    .discord_hunter = 1,                                                                            \
+    /* [Bonus Content] */                                                                           \
+    .bonus_content = 1,                                                                             \
+    /* [Audio] */                                                                                   \
+    .volume = 100,                                                                                  \
+    .mute_in_background = 0,                                                                        \
+    /* [Application] */                                                                             \
+    .confirm_exit = 1,                                                                              \
+    .language = 0,                                                                                  \
+    .button_icons = 0,                                                                              \
+    .menu_theme = THEME_HUNTER,                                                                     \
+    .menu_scale = 100,                                                                              \
+    .updates = UPDATES_ASK,                                                                         \
+    .save_location = "",                                                                            \
+
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -213,7 +280,7 @@ static const char DEFAULT_INI[] =
     "ItemRight = Wheel Down\n"
     "\n"
     "[Multiplayer]\n"
-    "; Which port to host/join hubs on (TCP and UDP)\n"
+    "; Which port to host/join hubs on (TCP and UDP). A change counts from the next hub you host or search for\n"
     "; Default: 39500\n"
     "Port = 39500\n"
     "\n"
@@ -279,7 +346,8 @@ static const char DEFAULT_INI[] =
     "\n"
     "[Bonus Content]\n"
     "; If enabled, the free online downloadable content (Event Quests, item packs, Palicoes) are automatically copied from the provided savegame inside the `bonus/` folder into your own savegame.\n"
-    "; This only happens if your savegame hasn't received any downloadable content yet.\n"
+    "; This only happens if your savegame hasn't received any downloadable content yet. A change counts the next time\n"
+    "; the game opens the save file.\n"
     "; Default: On\n"
     "BonusContent = On\n"
     "\n"
@@ -457,9 +525,9 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Upscaler", "FSR", fsr, true),
     {"Upscaler", "FSRQuality", SET_CHOICE, F(fsr_quality), 0, 0, 0,
      "NativeAA|native|aa,Quality,Balanced,Performance,UltraPerformance|ultraperf", NULL, true, ERR_FSR},
-    {"Upscaler", "Sharpness", SET_FLOAT, F(fsr_sharpness), 0, 0.0f, 1.0f, NULL, NULL, true, ERR_FSR},
+    {"Upscaler", "Sharpness", SET_FLOAT, F(fsr_sharpness), 0, 0.0f, 1.0f, NULL, NULL, false, ERR_FSR},
     ON_OFF("Upscaler", "ObjectMotion", fsr_objmotion, true),
-    {"Upscaler", "Reactive", SET_FLOAT, F(fsr_reactive), 0, 0.0f, 1.0f, NULL, NULL, true, ERR_FSR},
+    {"Upscaler", "Reactive", SET_FLOAT, F(fsr_reactive), 0, 0.0f, 1.0f, NULL, NULL, false, ERR_FSR},
     ON_OFF("Upscaler", "AnimSurf", fsr_animsurf, true),
     {"Graphics", "DrawDistance", SET_FLOAT, F(draw_distance), 0, 0.0f, 10.0f, NULL, NULL, false, ERR_DRAW},
     ON_OFF("Graphics", "SmoothGradients", smooth_gradients, false),
@@ -482,23 +550,23 @@ const ConfigSetting g_settings[] = {
     KEYS("Plus", BIND_PLUS), KEYS("Minus", BIND_MINUS), KEYS("DpadUp", BIND_DPAD_UP), KEYS("DpadDown", BIND_DPAD_DOWN),
     KEYS("DpadLeft", BIND_DPAD_LEFT), KEYS("DpadRight", BIND_DPAD_RIGHT), KEYS("LeftStickClick", BIND_LSTICK),
     KEYS("RightStickClick", BIND_RSTICK), KEYS("ItemLeft", BIND_ITEM_LEFT), KEYS("ItemRight", BIND_ITEM_RIGHT),
-    {"Multiplayer", "Port", SET_INT, F(ldn_port), 0, 1, 65535, NULL, NULL, true, ERR_NET},
+    {"Multiplayer", "Port", SET_INT, F(ldn_port), 0, 1, 65535, NULL, NULL, false, ERR_NET},
     {"Android", "SaveFolder", SET_TEXT, F(save_dir), sizeof g_config.save_dir, 0, 0, NULL, NULL, true, ERR_FOLDER},
     {"Android", "GameFolder", SET_TEXT, F(game_dir), sizeof g_config.game_dir, 0, 0, NULL, NULL, true, ERR_GAME_FOLDER},
-    {"Multiplayer", "Join", SET_TEXT, F(ldn_join), sizeof g_config.ldn_join, 0, 0, NULL, NULL, true, ERR_NET},
+    {"Multiplayer", "Join", SET_TEXT, F(ldn_join), sizeof g_config.ldn_join, 0, 0, NULL, NULL, false, ERR_NET},
     {"Multiplayer", "Server", SET_TEXT, F(ldn_server), sizeof g_config.ldn_server, 0, 0, NULL, NULL, false, ERR_SERVER},
     {"Multiplayer", "Key", SET_TEXT, F(ldn_key), sizeof g_config.ldn_key, 0, 0, NULL, NULL, false, ERR_SERVER},
-    ON_OFF("Multiplayer", "SyncSmallMonsters", sync_small_monsters, true),
+    ON_OFF("Multiplayer", "SyncSmallMonsters", sync_small_monsters, false),
     ON_OFF("Multiplayer", "ShareUrgentCredit", share_urgent, false),
-    {"Monster HP", "1Player|1Players", SET_FACTOR, F(hp.scale[0]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
-    {"Monster HP", "2Players|2Player", SET_FACTOR, F(hp.scale[1]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
-    {"Monster HP", "3Players|3Player", SET_FACTOR, F(hp.scale[2]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
-    {"Monster HP", "4Players|4Player", SET_FACTOR, F(hp.scale[3]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
-    ON_OFF("Village Quests", "VillageQuestsInHub", village_in_hub, true),
-    {"Village Quests", "HubHP", SET_FACTOR, F(hp.village), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_VILLAGE},
+    {"Monster HP", "1Player|1Players", SET_FACTOR, F(hp.scale[0]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
+    {"Monster HP", "2Players|2Player", SET_FACTOR, F(hp.scale[1]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
+    {"Monster HP", "3Players|3Player", SET_FACTOR, F(hp.scale[2]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
+    {"Monster HP", "4Players|4Player", SET_FACTOR, F(hp.scale[3]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
+    ON_OFF("Village Quests", "VillageQuestsInHub", village_in_hub, false),
+    {"Village Quests", "HubHP", SET_FACTOR, F(hp.village), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_VILLAGE},
     ON_OFF("Discord", "RichPresence", discord, false),
     ON_OFF("Discord", "ShowHunter", discord_hunter, false),
-    ON_OFF("Bonus Content", "BonusContent", bonus_content, true),
+    ON_OFF("Bonus Content", "BonusContent", bonus_content, false),
     {"Audio", "Volume", SET_INT, F(volume), 0, 0, 100, NULL, NULL, false, ERR_MISC},
     ON_OFF("Audio", "MuteInBackground", mute_in_background, false),
     ON_OFF("Application", "ConfirmExit", confirm_exit, false),

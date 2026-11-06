@@ -19,6 +19,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>  // ftruncate (mingw pulls it in through another header; POSIX does not)
+#ifdef __x86_64__
+#include <immintrin.h>
+#endif
 
 #include "../../kernel.h"
 #include "fsr.h"
@@ -833,6 +836,7 @@ void vk_framebuffers_forget_view(VkImageView v) {
 
 // ================================================================== passes
 static VkFormat pass_color[8], pass_depth;
+static bool pass_d24_as_float;  // the depth attachment is a DEPTH24_STENCIL8 made as D32S8 (polygon offsets in D24 steps)
 static uint32_t pass_ncolor, pass_samples = 1, pass_w, pass_h;
 static bool ui_relax_scissor;  // the draw being set up moved a HUD piece out from under the game's scissor
 static int ui_scissor_v = -1;  // 16:10: the draw being set up is a HUD piece anchored so (0 top, 1 centre, 2 bottom),
@@ -987,7 +991,7 @@ static struct {
     uint32_t known, vb_known;
     VkPipeline pipe;
     uint32_t sten[2][3];  // compare mask, write mask, reference per face
-    float bc[4], db[3];
+    float bc[4], db[4];
     VkViewport vp;
     VkRect2D sc;
     VkBuffer ib; VkDeviceSize io; VkIndexType it;
@@ -1603,6 +1607,7 @@ static void begin_pass(void) {
         pass_samples = b->samples;
     }
     pass_depth = VK_FORMAT_UNDEFINED;
+    pass_d24_as_float = false;
     NvnTexture *dt = st.rt.depth && pass_sx != 1.0f ? vk_fsr_map(st.rt.depth, true) : st.rt.depth;  // (FSR: as above)
     if (dt) {
         renderer_mark_gpu_owned(dt);
@@ -1610,6 +1615,7 @@ static void begin_pass(void) {
         TexBackend *b = dt->backend;
         if (v && renderer_format_is_depth(dt->format) && b->aspect != VK_IMAGE_ASPECT_COLOR_BIT) {
             pass_depth = b->format;
+            pass_d24_as_float = dt->format == 0x35 && b->format == VK_FORMAT_D32_SFLOAT_S8_UINT;  // (0x35: DEPTH24_STENCIL8)
             att[nviews] = b, att_fmt[nviews] = b->format, att_index[nviews] = -1;
             views[nviews++] = v;
             uint32_t lv = st.rt.has_dview && (st.rt.dview.setmask & 1) ? st.rt.dview.base_level : 0;
@@ -3723,6 +3729,37 @@ static bool movie_viewport(NvnTexture *y, const float *vp, float out[4]) {
     return true;
 }
 
+// The largest of n 16-bit indices, the restart index (skip) left out. Every indexed draw scans its indices to bound its
+// vertex data: 8% of the render thread with the plain loop, and clang doesn't vectorize it.
+static uint32_t max_index16_plain(const uint16_t *s, uint32_t n, uint16_t skip) {
+    uint32_t m = 0;
+    for (uint32_t i = 0; i < n; i++) if (s[i] > m && s[i] != skip) m = s[i];
+    return m;
+}
+#ifdef __x86_64__
+__attribute__((target("avx2"))) static uint32_t max_index16_avx2(const uint16_t *s, uint32_t n, uint16_t skip) {
+    __m256i sk = _mm256_set1_epi16((short)skip), m256 = _mm256_setzero_si256();
+    uint32_t i = 0;
+    for (; i + 16 <= n; i += 16) {
+        __m256i v = _mm256_loadu_si256((const __m256i *)(s + i));
+        m256 = _mm256_max_epu16(m256, _mm256_andnot_si256(_mm256_cmpeq_epi16(v, sk), v));
+    }
+    // (the largest of 8: minpos on the inverted values)
+    __m128i x = _mm_max_epu16(_mm256_castsi256_si128(m256), _mm256_extracti128_si256(m256, 1));
+    uint32_t m = (uint16_t)~_mm_cvtsi128_si32(_mm_minpos_epu16(_mm_xor_si128(x, _mm_set1_epi32(-1))));
+    for (; i < n; i++) if (s[i] > m && s[i] != skip) m = s[i];
+    return m;
+}
+#endif
+static uint32_t max_index16(const uint16_t *s, uint32_t n, uint16_t skip) {
+#ifdef __x86_64__
+    static int avx2 = -1;
+    if (avx2 < 0) { __builtin_cpu_init(); avx2 = __builtin_cpu_supports("avx2") != 0; }
+    if (avx2) return max_index16_avx2(s, n, skip);
+#endif
+    return max_index16_plain(s, n, skip);
+}
+
 static void draw(CmdRec *r, bool indexed) {
     if (!st.program) { stat_skipped++; return; }
     ShaderKey vkey = {0}, fkey = {0};
@@ -3874,9 +3911,26 @@ static void draw(CmdRec *r, bool indexed) {
     }
     if (ss_need(SS_BC, !memcmp(ss.bc, st.blend_color, sizeof ss.bc))) { memcpy(ss.bc, st.blend_color, sizeof ss.bc); vkCmdSetBlendConstants(cb, st.blend_color); }
     {
-        float f[3] = {0, 0, 0};
-        if (k.depth_bias) memcpy(f, st.poly_offset, sizeof f);
-        if (ss_need(SS_DB, !memcmp(ss.db, f, sizeof f))) { memcpy(ss.db, f, sizeof f); vkCmdSetDepthBias(cb, f[1], f[2], f[0]); }
+        // (f[3]: D24 steps on a D32S8, VK_EXT_depth_bias_control: a float format's steps follow each triangle's depth
+        // and can be finer than D24's, too small for the game's decal offsets)
+        float f[4] = {0, 0, 0, 0};
+        if (k.depth_bias) memcpy(f, st.poly_offset, 3 * sizeof *f);
+        bool d24 = k.depth_bias && pass_d24_as_float && g_vk.set_depth_bias2;
+        f[3] = d24;
+        if (ss_need(SS_DB, !memcmp(ss.db, f, sizeof f))) {
+            memcpy(ss.db, f, sizeof f);
+#ifdef VK_EXT_depth_bias_control
+            if (d24) {
+                VkDepthBiasRepresentationInfoEXT rep = {
+                    .sType = VK_STRUCTURE_TYPE_DEPTH_BIAS_REPRESENTATION_INFO_EXT,
+                    .depthBiasRepresentation = VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORCE_UNORM_EXT};
+                VkDepthBiasInfoEXT bi = {.sType = VK_STRUCTURE_TYPE_DEPTH_BIAS_INFO_EXT, .pNext = &rep,
+                                         .depthBiasConstantFactor = f[1], .depthBiasClamp = f[2], .depthBiasSlopeFactor = f[0]};
+                g_vk.set_depth_bias2(cb, &bi);
+            } else
+#endif
+                vkCmdSetDepthBias(cb, f[1], f[2], f[0]);
+        }
     }
     float *vp = st.viewport[0], movie_vp[4], v[4];
     PreviewMap pm;
@@ -3928,7 +3982,7 @@ static void draw(CmdRec *r, bool indexed) {
             itype_vk = itype == 1 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
             icount = count;
             ib = vk_transient_copy(src, (uint64_t)count * isz + 4, 4);
-            if (isz == 2) { const uint16_t *s = src; for (uint32_t i = 0; i < count; i++) if (s[i] > max_index && s[i] != (uint16_t)restart) max_index = s[i]; }
+            if (isz == 2) max_index = max_index16(src, count, (uint16_t)restart);
             else { const uint32_t *s = src; for (uint32_t i = 0; i < count; i++) if (s[i] > max_index && s[i] != restart) max_index = s[i]; }
         } else if (native) {  // 8-bit indices: widened to 16
             ib = vk_transient((uint64_t)count * 2 + 4, 4);
@@ -4422,7 +4476,9 @@ static void exec_list(uint64_t handle, int depth) {
         case CMD_SET_PRIMITIVE_RESTART: st.prim_restart = r->x[0] != 0; st.restart_index = (uint32_t)r->x[1]; break;
         case CMD_SET_DEPTH_CLAMP:
             st.depth_clamp = r->x[0] != 0;
-            if (getenv("MHGU_DUMP_VERBOSE")) {
+            static int dump_verbose = -1;  // (once: getenv here, for each of these commands, was 6% of the render thread)
+            if (dump_verbose < 0) dump_verbose = getenv("MHGU_DUMP_VERBOSE") != NULL;
+            if (dump_verbose) {
                 static int n, last = -1;
                 if (st.depth_clamp != last && n++ < 20) LOG("[vk] depth clamp -> %d\n", st.depth_clamp);
                 last = st.depth_clamp;
@@ -4491,7 +4547,7 @@ static void exec_list(uint64_t handle, int depth) {
             }
             if (!r->x[1] || !guest_range_ok(r->x[1], 16)) break;
             uint64_t now = plat_now_ns();
-            uint64_t ticks = (uint64_t)((unsigned __int128)now * 384 / 625);
+            uint64_t ticks = now / 625 * 384 + now % 625 * 384 / 625;
             ST64((uint32_t)r->x[1], 0);
             ST64((uint32_t)r->x[1] + 8, ticks);
             break;
