@@ -5,6 +5,7 @@
 #include "settings_icons.h"
 #include "app_actions.h"
 #include "cheats.h"
+#include "forge.h"
 #include "overlay.h"
 #include "keymap.h"
 #include "modorder.h"
@@ -94,9 +95,11 @@ struct State {
     int capture_bind = -1;     // the keybind (BIND_*) a key is being chosen for; -1: the chat key
     bool capture_add = false;  // the key chosen is that keybind's second, else its only one
 } s;
-std::atomic<bool> request_exit, request_back, is_dirty, is_confirming, is_capturing, capture_mouse, capture_wheel;
+std::atomic<bool> request_exit, request_back, is_dirty, is_confirming, is_capturing, capture_mouse, capture_wheel,
+    capture_pointing;
 // (the key pressed while a key is being chosen, or KEY_MOUSE + a mouse button; -1: none yet)
 std::atomic<int> captured_key{-1};
+bool forge_requested;  // the Mods tab's "Open the Forge menu" (game thread, as the rest of the panel)
 const char *tr(const char *text) { return settings_text(s.draft.language, text); }
 std::string fmt(const char *text, ...) {
     char buffer[512];
@@ -1017,6 +1020,13 @@ void mods_rows(std::vector<Row> &r) {
             }
         mods.scan.reset();
     });
+    // Forge's menu (its plugins' settings) opens with a key (Insert): with a controller alone (an Android TV box) this
+    // row is the way in. It opens over this menu, which waits under it; closing it comes back here (runtime/overlay.cpp).
+    const char *names[1];
+    bool plugins = forge_plugin_titles(names, 1) > 0 || forge_plugins_have(FORGE_IMGUI_RENDER);
+    header(r, "mods.forge.header", tr("Forge plugins"));
+    action(r, "mods.forge", tr("Open the Forge menu"), []() { forge_requested = true; }, plugins);
+    r.back().help = tr("The Forge plugins' own settings, over this menu. Cancel (the button that goes back in the game's menus) or Start + Back closes it and comes back here. On a keyboard the Forge menu key (Insert) opens and closes it.");
 }
 std::vector<Row> main_rows() {
     std::vector<Row> r;
@@ -1826,6 +1836,11 @@ void mouse_drag(ImGuiViewport *vp, float width) {
 } // namespace
 void settings_panel_request_close() { request_exit.store(true); }
 void settings_panel_request_back() { request_back.store(true); }
+bool settings_panel_take_forge() {
+    bool was = forge_requested;
+    forge_requested = false;
+    return was;
+}
 bool settings_panel_dirty() { return is_dirty.load(); }
 int settings_panel_theme() { return s.editing ? s.draft.menu_theme : config_editable().menu_theme; }
 bool settings_panel_confirming() { return is_confirming.load() || request_exit.load(); }
@@ -1836,7 +1851,8 @@ bool settings_panel_key(int scancode) {
     return true;
 }
 bool settings_panel_mouse(int button) {
-    if (!capture_mouse.load() || button < 1 || button > SDL_BUTTON_X2)
+    if (!capture_mouse.load() || button < 1 || button > SDL_BUTTON_X2 ||
+        (button == SDL_BUTTON_LEFT && capture_pointing.load()))
         return false;
     captured_key = KEY_MOUSE + button;
     return true;
@@ -2241,8 +2257,10 @@ void settings_panel(bool *open) {
     is_dirty = *open && (dirty() || pending_text());
     is_confirming = *open && confirmation();
     is_capturing = *open && s.view == View::KeyCapture;
-    // (a click on the capture view's buttons is theirs; anywhere else it is the mouse button chosen)
-    capture_mouse = is_capturing && s.capture_bind >= 0 && !s.pointing;
+    // (a left click on the capture view's buttons is theirs; any other button, or a left click anywhere else, is the
+    // mouse button chosen)
+    capture_mouse = is_capturing && s.capture_bind >= 0;
+    capture_pointing = s.pointing;
     capture_wheel = is_capturing && s.capture_bind >= 0;  // (the capture view doesn't scroll)
     if (!*open)
         s.editing = false;

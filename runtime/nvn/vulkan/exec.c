@@ -842,11 +842,13 @@ static bool ui_relax_scissor;  // the draw being set up moved a HUD piece out fr
 static int ui_scissor_v = -1;  // 16:10: the draw being set up is a HUD piece anchored so (0 top, 1 centre, 2 bottom),
                                // and its scissor moves with it
 static bool ui_menu_pass;  // this pass drew a layer 97 menu before (the windows of layer 100 then sit beside Top-anchored ones)
-// The HUD quads this pass drew last (16:9 canvas place, vertical anchor 0 top / 1 centre / 2 bottom, horizontal 0 left /
-// 1 right / 2 centre): a model preview follows the window drawn over it (ui_preview_map)
+// The HUD quads drawn last (16:9 canvas place, vertical anchor 0 top / 1 centre / 2 bottom, horizontal 0 left / 1 right /
+// 2 centre): a model preview follows the window drawn over it (ui_preview_map). Kept across passes: the Smithy's model
+// is drawn in a pass of its own, after the parchment it sits in.
 #define UI_RECENT 256
 static struct { float x, y; uint8_t vanchor, hanchor; } ui_recent[UI_RECENT];
-static uint32_t ui_nrecent;  // (quads recorded this pass; the slot is the count modulo UI_RECENT)
+static uint32_t ui_nrecent, ui_pass_recent;  // (quads recorded so far, the slot is the count modulo UI_RECENT; and when
+                                             // this pass began)
 static bool ui_loading_pass;  // this pass draws the loading screen (its backdrop, layer 110, came first)
 static bool ui_title_pass;  // this pass draws the title screen (its layout, layer 108 at the canvas centre, came first)
 static bool ui_frontend_pass;  // this pass draws a front-end screen (Main Menu, Character Select: its 16:9 backdrop, layer
@@ -1135,6 +1137,7 @@ volatile int g_gpuprof_request;
 static int gp_active, gp_n, gp_pass;
 static VkQueryPool gp_pool;
 static char gp_label[256][64];
+static const char *gp_pass_note = "", *gp_next_note = "";  // what this pass and the next one are, when known (FXAA)
 
 static void gp_mark(const char *label) {
     if (!gp_active || gp_n >= 256) return;
@@ -1195,13 +1198,13 @@ static bool models_2d_in_samples(void) { return mr_frame == g_present_count && m
 void vk_end_pass(void) {
     if (!in_pass) return;
     ui_group_end();
-    if (ui_nrecent) ui_results_last = ui_results_pass;
+    if (ui_nrecent != ui_pass_recent) ui_results_last = ui_results_pass;
     vkCmdEndRenderPass(vk_cmd());
     in_pass = false;
     if (gp_active) {
         char l[64];
-        snprintf(l, sizeof l, "pass %d %ux%u%s, %llu draws", gp_pass++, pass_w, pass_h, pass_msaa ? " MSAA" : "",
-                 (unsigned long long)(stat_draws - pass_draws_at));
+        snprintf(l, sizeof l, "pass %d %ux%u%s, %llu draws%s", gp_pass++, pass_w, pass_h, pass_msaa ? " MSAA" : "",
+                 (unsigned long long)(stat_draws - pass_draws_at), gp_pass_note);
         gp_mark(l);
     }
     if (pass_msaa) for (uint32_t k = 0; k < pass_natt; k++) pass_att[k]->ms_dirty = true;
@@ -1636,7 +1639,7 @@ static void begin_pass(void) {
     ui_results_pass = false;
     ui_meownster_pass = false;
     ui_menu_pass = false;
-    ui_nrecent = 0;
+    ui_pass_recent = ui_nrecent;
     pass_msaa = false;
     // (MSAA: a colour target 3D models were drawn into lately (ms_expand), while they are; once they are not, it is like
     // any other target again)
@@ -1700,6 +1703,7 @@ static void begin_pass(void) {
     }
     VkFramebuffer fb = vk_framebuffer(pass_rp, views, nviews, minw, minh);
     gp_mark("  (between passes)");
+    gp_pass_note = gp_next_note, gp_next_note = "";
     VkRenderPassBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = pass_rp, .framebuffer = fb,
                                 .renderArea = {{0, 0}, {minw, minh}}};
     vkCmdBeginRenderPass(cb, &bi, VK_SUBPASS_CONTENTS_INLINE);
@@ -1757,8 +1761,9 @@ static bool ui_preview_map(PreviewMap *pm) {
     if (w < 8.0f || w > 0.9f * pw || h > 0.98f * ph) return false;  // (the scene itself: the whole picture)
     *pm = (PreviewMap){0, 1, 0, 1};
     // The window it is drawn in: the last quad over the viewport (inside it sideways, not below it). The last quad of all
-    // can be a button prompt under the window ("Rotate" under the Palico Scout preview), anchored apart from it.
-    int vanchor = ui_nrecent ? ui_recent[(ui_nrecent - 1) % UI_RECENT].vanchor : 1, hanchor = -1;
+    // can be a button prompt under the window ("Rotate" under the Palico Scout preview), anchored apart from it; with
+    // no quad over it, the last one of this pass, or the centre.
+    int vanchor = ui_nrecent != ui_pass_recent ? ui_recent[(ui_nrecent - 1) % UI_RECENT].vanchor : 1, hanchor = -1;
     {
         float x0 = vp[0] / pw * 1280.0f, x1 = (vp[0] + w) / pw * 1280.0f, y1 = (fminf(vp[1], vp[1] + vp[3]) + h) / ph * 720.0f;
         for (uint32_t i = ui_nrecent; i > 0 && ui_nrecent - i < UI_RECENT; i--) {
@@ -2168,12 +2173,20 @@ static void save_glsl(const char *src, uint64_t addr, const char *suffix) {
     if (f) { fputs(src, f); fclose(f); }
 }
 
+#define FXAA_FS_HASH 0x8530ded68f4407dfull  // the game's FXAA fragment shader
+static uint64_t prog_fs_hash(Prog *p);
+
 static void compile_program(void *arg) {
     Prog *p = arg;
     uint64_t t0 = plat_now_ns();
     size_t nv = 0, nf = 0;
     uint32_t *sv = vk_glsl_to_spirv(p->vi->msl, STAGE_VERTEX, "vs", &nv);
     const char *fsrc = p->fi->msl;
+    // The game's FXAA: hand-written, as the translation is slow (shaders.c "fxaa.frag.game"). Here and not at the
+    // translation, so that it also reaches the sources kept in programs.src by earlier versions.
+    if (prog_fs_hash(p) == FXAA_FS_HASH && !p->fkey.alpha_func && !p->fkey.alpha_coverage && !p->fkey.rt_kind[0] &&
+        (p->fkey.vs_out_mask & 2))
+        fsrc = vk_builtin_source("fxaa.frag.game");
     char *over = NULL;
     if (getenv("MHGU_GLSL_OVERRIDE")) {  // (debug) glsl_override/<code address>_fs.glsl replaces the translated shader
         char path[96];
@@ -2498,7 +2511,16 @@ static void prog_want(Prog *p) {
 typedef struct { uint64_t code[2], cmax[2]; } PrewarmReq;
 static void plist_seen(const uint64_t code[2], const uint64_t cmax[2], const uint64_t chash[2]);  // (pipelines.list)
 static uint64_t pw_t0;
-static _Atomic uint64_t pw_total_new, pw_total_known;
+static _Atomic uint64_t pw_total_new, pw_total_known, pw_created;
+
+// The prewarm's progress for the loading indicator (runtime/overlay.cpp): programs done of those the game has made so
+// far; false once none is left (or there never was a prewarm). Any thread.
+bool shader_prewarm_progress(uint64_t *done, uint64_t *total) {
+    uint64_t left = atomic_load(&stat_pw_left), all = atomic_load(&pw_created);  // (left first: all >= left)
+    if (done) *done = all > left ? all - left : 0;
+    if (total) *total = all;
+    return left != 0;
+}
 
 static void prewarm_done(void) {
     if (atomic_fetch_sub(&stat_pw_left, 1) != 1) return;
@@ -2575,6 +2597,7 @@ void backend_program_created(const NvnProgram *np) {
         r->code[i] = np->stages[i].code_addr;
         r->cmax[i] = np->stages[i].const_offset ? np->stages[i].const_offset : 0x10000;
     }
+    atomic_fetch_add(&pw_created, 1);
     if (atomic_fetch_add(&stat_pw_left, 1) == 0 && !pw_t0) pw_t0 = plat_now_ns();
     enqueue(&translate_q, 1, true, prewarm_translate, r);
 }
@@ -3670,6 +3693,7 @@ static bool fxaa_311(NvnTexture *src) {
     vkCmdSetScissor(cb, 0, 1, &area);
     vkCmdDraw(cb, 3, 1, 0, 0);
     vkCmdEndRenderPass(cb);
+    gp_mark("  FXAA 3.11");
     ss_forget();
     stat_draws++;
     return true;
@@ -3677,20 +3701,28 @@ static bool fxaa_311(NvnTexture *src) {
 
 // FXAA off (settings): the game's FXAA pass (recognised by its shader) copies its input instead; FXAAMode = 3_11 draws
 // FXAA 3.11 there (fxaa_311).
-#define FXAA_FS_HASH 0x8530ded68f4407dfull
 static void copy_texture(const TexRef *src, const TexRef *dst, uint64_t flags);
 static bool fxaa_skipped(Prog *pr) {
-    if (prog_fs_hash(pr) == FXAA_FS_HASH) aa_pass_frame = g_present_count;  // (menus: full_picture)
+    if (prog_fs_hash(pr) == FXAA_FS_HASH) {
+        aa_pass_frame = g_present_count;  // (menus: full_picture)
+        gp_next_note = " (FXAA)";
+    }
     bool fxaa_311_on = config_live_fxaa() && config_live_fxaa_mode() == FXAA_311;
     if ((config_live_fxaa() && !fxaa_311_on) || prog_fs_hash(pr) != FXAA_FS_HASH || pr->fi->ntex != 1 || !st.rt.ncolor ||
         !st.rt.color[0])
         return false;
     NvnTexture *src = shader_texture_object(1, &pr->fi->tex[0]);
     if (!src || src == st.rt.color[0]) return false;
-    if (fxaa_311_on) return fxaa_311(src);
+    if (fxaa_311_on) {
+        if (!fxaa_311(src)) return false;
+        gp_next_note = "";
+        return true;
+    }
     TexRef s = {.tex = (uint64_t)(uintptr_t)src}, d = {.tex = (uint64_t)(uintptr_t)st.rt.color[0]};
     if (st.rt.has_cview[0]) d.view = st.rt.cview[0], d.has_view = 1;
     copy_texture(&s, &d, 0);
+    gp_mark("  FXAA off: a copy");
+    gp_next_note = "";
     stat_draws++;
     return true;
 }
