@@ -31,6 +31,15 @@ extern "C" int ui_take_picked_folder(char *out, size_t size) {
 }
 extern "C" int ldn_hub_status(const char *, const char *, int *, int *) { return 0; }
 extern "C" void ldn_hub_check(const char *, const char *) {}
+// Public fixtures only: no native plugin is loaded or executed.
+static bool forge_titles;
+static bool forge_render;
+extern "C" int forge_plugin_titles(const char **out, int max) {
+    if (!forge_titles || max < 1) return 0;
+    out[0] = "Fixture plugin";
+    return 1;
+}
+extern "C" bool forge_plugins_have(int) { return forge_render; }
 // (cheats.c: two cheats, a master code and one that can be turned off)
 static bool cheat_on[2] = {true, true};
 extern "C" int cheats_count(void) { return 2; }
@@ -339,6 +348,37 @@ int main() {
         assert(list.find("\nBbb\nAaa\n") != std::string::npos);
     }
     // A mod that is off keeps its place in the list: turned on again, it loads where it was
+#ifdef MHGU_TEST_FORGE_MENU
+    // A disabled Forge row cannot take focus or emit an open request.
+    assert(!settings_panel_take_forge());
+    press(ImGuiKey_Home);
+    down(4);
+    selected("mods.conflicts");
+    down();
+    selected("mods.rescan");
+    down();
+    selected("reset");
+    assert(!settings_panel_take_forge());
+    forge_titles = true;
+    idle();
+    press(ImGuiKey_Home);
+    down(6);
+    selected("mods.forge");
+    confirm();
+    assert(settings_panel_take_forge());
+    assert(!settings_panel_take_forge());
+    // An ImGui render entry point also enables the action without titles.
+    forge_titles = false;
+    forge_render = true;
+    idle();
+    selected("mods.forge");
+    confirm();
+    assert(settings_panel_take_forge());
+    assert(!settings_panel_take_forge());
+    forge_render = false;
+    idle();
+    assert(!settings_panel_take_forge());
+#endif
     {
         ModEntry order[] = {{"Bbb", true}, {"Ccc", false}, {"Aaa", true}, {"_Ddd", false}};
         char error[256];

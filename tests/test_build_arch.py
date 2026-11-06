@@ -1,4 +1,6 @@
 """ARM64-only build regressions; ELF headers are explicit test fixtures."""
+import argparse
+import ast
 import importlib.util
 import hashlib
 import json
@@ -10,6 +12,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +24,7 @@ def probe(*args):
     names = ("TARGET_ARCH", "TARGET_FLAGS", "CMAKE_TARGET_FLAGS",
              "FFMPEG_TARGET_FLAGS", "GENARCH", "GAMELIB_ID", "B", "O",
              "CC", "CXX", "PKG_CONFIG_LIBDIR", "PKG_CONFIG_SYSROOT_DIR",
-             "FFMPEG_CC", "RT_SRC")
+             "FFMPEG_CC", "RT_SRC", "GEN_ID")
     recipe = "probe:\n\t@printf '%s\\n' " + " ".join(
         f"'{name}=$({name})'" for name in names) + "\n"
     return subprocess.run(["make", "-s", "-f", "Makefile", "-f", "-",
@@ -48,6 +51,163 @@ def load_dist():
 
 
 class BuildTests(unittest.TestCase):
+    def test_village_target_cross_compiles_and_uses_runner(self):
+        result = subprocess.run(
+            ["make", "-n", "test-villagehub", "HOST_ARCH=x86_64",
+             "SYSROOT=/test/sysroot", "O=/test/objects",
+             "SDL3=system", "SHADERC=system",
+             "TEST_RUNNER=qemu-aarch64 -L /test/sysroot"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for required in (
+            "--target=aarch64-linux-gnu", "--sysroot=/test/sysroot",
+            "-fuse-ld=lld", "-fsigned-char", "tests/test_villagehub.c",
+            "-Wl,--gc-sections",
+            "qemu-aarch64 -L /test/sysroot "
+            "/test/objects/villagehub-test/test-villagehub",
+        ):
+            self.assertIn(required, result.stdout)
+
+    def test_forge_panel_fixture_is_enabled_explicitly(self):
+        fixture = (ROOT / "tests/test_settings_panel.cpp").read_text()
+        for token in ("forge_plugin_titles", "forge_plugins_have",
+                      "settings_panel_take_forge", 'selected("mods.forge")',
+                      "MHGU_TEST_FORGE_MENU"):
+            self.assertIn(token, fixture)
+        result = subprocess.run(
+            ["make", "-n", "test-settings-panel", "HOST_ARCH=x86_64",
+             "SYSROOT=/test/sysroot", "SDL3=system", "SHADERC=system",
+             "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        command = next(line for line in result.stdout.splitlines()
+                       if "tests/test_settings_panel.cpp" in line)
+        self.assertIn("-DMHGU_TEST_FORGE_MENU", command)
+
+    def test_interp_target_cross_compiles_and_uses_runner(self):
+        result = subprocess.run(
+            ["make", "-n", "test-interp", "HOST_ARCH=x86_64",
+             "SYSROOT=/test/sysroot", "O=/test/objects",
+             "SDL3=system", "SHADERC=system",
+             "TEST_RUNNER=qemu-aarch64 -L /test/sysroot"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for required in (
+            "--target=aarch64-linux-gnu", "--sysroot=/test/sysroot",
+            "-fuse-ld=lld", "-fsigned-char", "tests/test_interp.c",
+            "runtime/interp.c", "runtime/neon.c", "runtime/simd_int.c",
+            "-lm", "-pthread",
+            "qemu-aarch64 -L /test/sysroot "
+            "/test/objects/interp-test/test-interp",
+        ):
+            self.assertIn(required, result.stdout)
+
+    def test_lift_predecoded_mode_preserves_target_and_runner_options(self):
+        # Exercise real parser/selection/compiler expressions, not an NSO.
+        tree = ast.parse((ROOT / "tools/test_lift.py").read_text())
+        main = next(n for n in tree.body
+                    if isinstance(n, ast.FunctionDef) and n.name == "main")
+        parser = []
+        for statement in main.body:
+            if isinstance(statement, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "rng"
+                for t in statement.targets
+            ):
+                break
+            parser.append(statement)
+        command = next(n for n in ast.walk(main)
+                       if isinstance(n, ast.Assign) and any(
+                           isinstance(t, ast.Name) and t.id == "cmd"
+                           for t in n.targets))
+        for option, function in (("--interp-ops", "interp_exec_op"),
+                                 ("--interp", "interp_exec"), (None, None)):
+            argv = ["test_lift.py", "/public-fixture", "0x200000",
+                    "--cc", "clang --target=aarch64-linux-gnu "
+                    "--sysroot=/test/sysroot -fuse-ld=lld",
+                    "--genarch=-march=armv8-a",
+                    "--runner", "qemu-aarch64 -L /test/sysroot"]
+            if option:
+                argv.append(option)
+            env = dict(argparse=argparse, platform=SimpleNamespace(
+                machine=lambda: "aarch64"), shlex=shlex, os=os,
+                ROOT=str(ROOT), HERE=str(ROOT / "tools"), exe="/test/exe",
+                work="/test/work")
+            with patch.object(sys, "argv", argv):
+                exec(compile(ast.Module(parser, type_ignores=[]),
+                             "<lift-parser>", "exec"), env)
+            self.assertEqual(env.get("interp_fn"), function)
+            exec(compile(ast.Module([command], type_ignores=[]),
+                         "<lift-command>", "exec"), env)
+            for value in ("--target=aarch64-linux-gnu",
+                          "--sysroot=/test/sysroot", "-fsigned-char",
+                          "-fuse-ld=lld", "-march=armv8-a"):
+                self.assertIn(value, env["cmd"])
+            self.assertEqual(str(ROOT / "runtime/interp.c") in env["cmd"],
+                             function is not None)
+            self.assertEqual(shlex.split(env["args"].runner),
+                             ["qemu-aarch64", "-L", "/test/sysroot"])
+
+    def test_generation_identity_and_stale_guard(self):
+        sources = ("tools/gen.py", "tools/lifter.py", "tools/neon.py",
+                   "tools/nso.py", "runtime/hle/hle_symbols.txt")
+        expected = hashlib.sha256(b"".join(
+            (ROOT / path).read_bytes().replace(b"\r", b"")
+            for path in sources)).hexdigest()[:16]
+        self.assertIn("GEN_ID=" + expected + "\n", probe().stdout)
+        with tempfile.TemporaryDirectory() as tmp:
+            generated = Path(tmp) / "generated"
+            generated.mkdir()
+            stamp = generated / "gen.id"
+            for value, success in (
+                (None, False), ("stale\n", False),
+                (expected + "\n", True),
+            ):
+                if value is not None:
+                    stamp.write_text(value)
+                result = subprocess.run(
+                    ["make", "-s", "check-generated", f"GEN={generated}"],
+                    cwd=ROOT, capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode == 0, success, value)
+                if not success:
+                    self.assertIn("run make gen", result.stderr)
+
+    def test_generation_records_only_complete_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            generated = root / "generated"
+            generated.mkdir()
+            stamp = generated / "gen.id"
+            driver = root / "generator_fixture.py"
+            # This public stand-in exercises Make's orchestration, not a dump.
+            driver.write_text(
+                "from pathlib import Path\nimport os, sys\n"
+                "Path(sys.argv[5]).mkdir(parents=True, exist_ok=True)\n"
+                "if sys.argv[2] == 'main' and os.getenv('FAIL_MAIN'):\n"
+                "    raise SystemExit(7)\n"
+            )
+            command = ["make", "-s", "gen", f"GEN={generated}",
+                       "GAME=/public-fixture", f"PY={sys.executable} {driver}"]
+            stamp.write_text("must be invalidated\n")
+            result = subprocess.run(
+                command, cwd=ROOT, env=dict(os.environ, FAIL_MAIN="1"),
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(stamp.exists(), "failed generation kept an old stamp")
+            result = subprocess.run(
+                command, cwd=ROOT, capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(stamp.is_file())
+            subprocess.run(
+                ["make", "-s", "check-generated", f"GEN={generated}"],
+                cwd=ROOT, check=True, capture_output=True,
+            )
+
     def test_defaults_and_arm64_alias(self):
         for args in ((), ("TARGET_ARCH=arm64",), ("TARGET_ARCH=aarch64",)):
             result = probe(*args)

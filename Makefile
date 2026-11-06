@@ -127,6 +127,10 @@ GAMELIB_LDFLAGS := -shared -fuse-ld=lld
 GAMELIB_SRCS := tools/gen.py tools/lifter.py tools/neon.py tools/nso.py tools/gamelib_entry.c \
                 runtime/hle/hle_symbols.txt runtime/cpu.h runtime/vfp.h runtime/neon_rt.h runtime/gamelib.h
 GAMELIB_ID := $(shell (cat $(GAMELIB_SRCS); echo '$(GENFLAGS)') | sha256sum | cut -c1-16)
+# Generated C must come from the current generator, not just link against a
+# current ABI ID. Normalize CRLF like upstream so the source stamp is portable.
+GEN_SRCS := tools/gen.py tools/lifter.py tools/neon.py tools/nso.py runtime/hle/hle_symbols.txt
+GEN_ID = $(shell cat $(GEN_SRCS) | tr -d '\r' | sha256sum | cut -c1-16)
 # SHADER_ID: the shader translator, whose output cache/programs.bin keeps (runtime/nvn/vulkan/exec.c): the cache stays
 # valid across builds until the translator changes. (Line endings ignored: the same sources hash the same everywhere.)
 SHADER_SRCS := runtime/nvn/maxwell/translate.c runtime/nvn/maxwell/shader.h
@@ -183,6 +187,18 @@ endif
 all: $(EXE) $(if $(GEN_SRC),$(GAMELIB)) licenses pipelist
 
 # INI/settings regression test: no game dump or generated code required.
+.PHONY: test-interp
+test-interp:
+	mkdir -p $(O)/interp-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld -std=gnu11 -O1 -fsigned-char -fno-strict-aliasing -ffp-contract=off -Iruntime tests/test_interp.c runtime/interp.c runtime/neon.c runtime/simd_int.c -lm -pthread -o $(O)/interp-test/test-interp
+	timeout 120 $(TEST_RUNNER) $(O)/interp-test/test-interp
+
+.PHONY: test-villagehub
+test-villagehub:
+	mkdir -p $(O)/villagehub-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld -std=gnu11 -O1 -fsigned-char -fno-strict-aliasing -Iruntime -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_villagehub.c -o $(O)/villagehub-test/test-villagehub
+	$(TEST_RUNNER) $(O)/villagehub-test/test-villagehub
+
 .PHONY: test-settings
 test-settings: $(LIB_STAMPS)
 	@mkdir -p $(O)/settings-test
@@ -391,8 +407,16 @@ $(B)/data/.complete:
 	fi
 
 gen:
+	rm -f "$(GEN)/gen.id" "$(GEN)/gen.id.tmp"
 	$(PY) tools/gen.py sdk "$(GAME)/exefs/sdk" 0x02400000 "$(GEN)/sdk" --hle runtime/hle/hle_symbols.txt
 	$(PY) tools/gen.py main "$(GAME)/exefs/main" 0x00200000 "$(GEN)/main"
+	@printf '%s\n' '$(GEN_ID)' > "$(GEN)/gen.id.tmp"
+	@mv -f "$(GEN)/gen.id.tmp" "$(GEN)/gen.id"
+
+.PHONY: check-generated
+check-generated:
+	@test "$$(cat "$(GEN)/gen.id" 2>/dev/null)" = '$(GEN_ID)' || \
+	    { echo "generated code is missing or stale: run make gen GAME=<the game files> first" >&2; exit 1; }
 
 # differential test of the recompiler against Unicorn (tools/test_lift.py)
 test-lift:
@@ -408,7 +432,7 @@ clean:  # (keeps $(B)/data, and the settings, caches and saves wherever the game
 DIST  ?= dist
 CHECK_VERSION = @echo '$(VERSION)' | grep -Eq '^[0-9]+(\.[0-9]+)*$$' || \
 	{ echo "dist: '$(VERSION)' is not a release version: make dist VERSION=<the release's tag, e.g. 0.10.4>"; exit 1; }
-dist:
+dist: check-generated
 	$(CHECK_VERSION)
 	$(PY) tools/dist.py "$(B)" "$(DIST)" linux "$(VERSION)" --revision "$(SOURCE_REVISION)" --image "$(BUILDER_IMAGE)"
 
@@ -456,7 +480,7 @@ test-cheats: $(LIB_STAMPS)
 .PHONY: test-settings-panel
 test-settings-panel: $(O)/rt/settings_panel.o $(O)/rt/modorder.o $(O)/rt/arcmerge.o $(O)/rt/config.o $(O)/rt/config_store.o $(O)/imgui/imgui/imgui.o $(O)/imgui/imgui/imgui_draw.o $(O)/imgui/imgui/imgui_tables.o $(O)/imgui/imgui/imgui_widgets.o $(LIB_STAMPS)
 	@mkdir -p $(O)/settings-test
-	$(CXX) $(TARGET_FLAGS) -fuse-ld=lld $(IMGUIFLAGS) -Iruntime tests/test_settings_panel.cpp $(filter %.o,$^) $(SDL_LIBS) -o $(O)/settings-test/test-settings-panel
+	$(CXX) $(TARGET_FLAGS) -fuse-ld=lld $(IMGUIFLAGS) $(PANEL_TEST_FLAGS) -Iruntime tests/test_settings_panel.cpp $(filter %.o,$^) $(SDL_LIBS) -o $(O)/settings-test/test-settings-panel
 	$(TEST_RUNNER) $(O)/settings-test/test-settings-panel
 
 # Translation coverage for both host-menu languages; no game files required.

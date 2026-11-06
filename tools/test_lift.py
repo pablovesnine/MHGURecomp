@@ -2,8 +2,9 @@
 reference) and as lifted C (tools/test_harness.c) from the same random register / memory state, and every
 register, flag, VFP register and the scratch memory are compared.
 
-Usage: test_lift.py <nso> <base> [--tests N] [--vectors K] [--seed S] [--only REGEX] [--interp]
---interp runs the same instructions through the interpreter (runtime/interp.c) instead.
+Usage: test_lift.py <nso> <base> [--tests N] [--vectors K] [--seed S] [--only REGEX] [--interp | --interp-ops]
+--interp runs the same instructions through the interpreter (runtime/interp.c) instead; --interp-ops through the
+pre-decoded ops its runs use (interp_exec_op).
 --cc selects the compiler and target flags; --genarch selects CPU flags; --runner selects an optional emulator.
 Needs clang on PATH. Exit status 0 when everything matches.
 """
@@ -165,11 +166,13 @@ def main():
     ap.add_argument('--only')
     ap.add_argument('--keep', action='store_true')
     ap.add_argument('--interp', action='store_true', help='test runtime/interp.c instead of the lifted C')
+    ap.add_argument('--interp-ops', action='store_true', help='test the interpreter\'s pre-decoded ops')
     ap.add_argument('--cc', default='clang -fuse-ld=lld', help='compiler command including target flags')
     ap.add_argument('--genarch', default=('-march=armv8-a' if platform.machine().lower()
                                          in ('aarch64', 'arm64') else '-march=x86-64-v3'))
     ap.add_argument('--runner', default='', help='optional runner, e.g. qemu-aarch64 -L SYSROOT')
     args = ap.parse_args()
+    interp_fn = 'interp_exec_op' if args.interp_ops else 'interp_exec' if args.interp else None
     rng = random.Random(args.seed)
 
     m = Module('t', args.nso, args.base)
@@ -206,8 +209,8 @@ def main():
     vecs, expect, meta = [], [], []
     for ti, (x, w, ins, dis) in enumerate(picked):
         body = ins.code if not ins.cond else f'if ({ins.cond}) {{ {ins.code} }}'
-        if args.interp:
-            body = f'int l; interp_exec(c, 0x{x:x}u, 0x{w:x}u, &l);'
+        if interp_fn:
+            body = f'int l; {interp_fn}(c, 0x{x:x}u, 0x{w:x}u, &l);'
         src.append(f'static void t{ti}(Cpu *restrict c) {{ {body} }}\n')
         mem_insn = bool(MEM_MN.match(dis.mnemonic))
         for k in range(args.vectors):
@@ -239,7 +242,7 @@ def main():
     cmd = shlex.split(args.cc) + ['-O1', '-fno-strict-aliasing', '-ffp-contract=off', '-fsigned-char'] + shlex.split(args.genarch) + ['-w',
            f'-I{os.path.join(ROOT, "runtime")}', '-o', exe, os.path.join(HERE, 'test_harness.c'),
            os.path.join(work, 'tests.c'), os.path.join(ROOT, 'runtime', 'simd_int.c'),
-           os.path.join(ROOT, 'runtime', 'neon.c')] + ([os.path.join(ROOT, 'runtime', 'interp.c')] if args.interp else [])
+           os.path.join(ROOT, 'runtime', 'neon.c')] + ([os.path.join(ROOT, 'runtime', 'interp.c')] if interp_fn else [])
     if os.name != 'nt':
         cmd.append('-lm')
     r = subprocess.run(cmd, capture_output=True, text=True)

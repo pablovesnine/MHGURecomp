@@ -3,10 +3,10 @@
   "keep": {
     "files": [
       "README.md", "Makefile", ".gitignore",
-      "tools/.dockerignore", "tools/desktop-arch.mk", "tools/dist.py",
+      "tools/.dockerignore", "tools/desktop-arch.mk", "tools/dist.py", "tools/test_lift.py",
       "tools/build-linux-release.sh", "tools/upstream-version.sh", "tools/publish-linux-release.py",
       "tools/fetch-verified.sh", "tests/test_source_fetch.py",
-      "updater/updater.h",
+      "updater/updater.h", "runtime/hle/villagehub.c",
       "tests/test_build_arch.py", "tests/test_linux_release.py", "tests/test_fork_docs.py",
       "tests/test_upstream_sync.py", "tests/test_automation_workflows.py",
       "tests/test_upstream_version.py", "tests/test_release_sync.py",
@@ -37,7 +37,7 @@
       "tools/disasm.py", "tools/gamelib_entry.c", "tools/gen.py", "tools/hle_list.py",
       "tools/imgui_thunks.py", "tools/lifter.py", "tools/mtarc.py", "tools/neon.py",
       "tools/nso.py", "tools/requirements.txt", "tools/retool.py", "tools/samples.py",
-      "tools/test_harness.c", "tools/test_lift.py", "tools/vkprobe.c"
+      "tools/test_harness.c", "tools/vkprobe.c"
     ],
     "prefixes": ["runtime/", "third_party/", "tests/"]
   }

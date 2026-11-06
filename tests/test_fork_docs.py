@@ -48,6 +48,23 @@ def linux_tab_labels(declaration):
 
 
 class ForkDocumentationTests(unittest.TestCase):
+    def test_0150_source_package_and_validation_boundaries(self):
+        readme = (ROOT / "README.md").read_text()
+        guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
+        maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
+        self.assertIn("targets upstream **0.15.0**", readme)
+        self.assertIn("package remains **0.14.3**", readme)
+        self.assertIn("/releases/tag/0.14.3", readme)
+        for text in ("LoadingIndicator", "INI-only", "restart",
+                     "Open the Forge menu", "Minus + Plus"):
+            self.assertIn(text, guide)
+        self.assertNotIn("Plus + B", guide + readme)
+        for text in ("gen.id", "check-generated", "test-interp",
+                     "test-villagehub", "--interp-ops",
+                     "MHGU_TEST_FORGE_MENU", "villagehub.c"):
+            self.assertIn(text, maintaining)
+        self.assertIn("not measured", readme)
+
     def test_tab_parser_preserves_all_linux_tabs_and_excludes_other_targets(self):
         declaration = (
             'const char *pages[] = {"Display"\n'

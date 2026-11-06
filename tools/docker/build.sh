@@ -43,8 +43,8 @@ pilot() {
 args=("TARGET_ARCH=aarch64" "B=$build" "O=/work/obj-aarch64"
   "GEN=/work/generated" "GAME=/game" "VERSION=$version" "JOBS=$jobs"
   "SYSROOT=$sysroot" "TEST_RUNNER=qemu-aarch64 -L $sysroot")
-# The trusted preparation commit still pins 0.14.0. Once the verified source
-# version reaches 0.14.3, missing module/cheat sources must fail, never skip.
+# New tests become mandatory at their pinned upstream version, not when a
+# matching source happens to exist. Missing sources must fail, never skip.
 # CI uses --version 0 for runtime checks, so use the tracked source pin instead.
 read_source_version() {
   local key value pinned=''
@@ -61,6 +61,10 @@ source_version=$(read_source_version)
 upstream_tests=()
 if printf '%s\n' 0.14.3 "$source_version" | sort -V -C; then
   upstream_tests=(test-engine-modules test-cheats)
+fi
+if printf '%s\n' 0.15.0 "$source_version" | sort -V -C; then
+  upstream_tests+=(test-interp test-villagehub)
+  args+=("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU")
 fi
 if [[ $mode == release ]]; then
   [[ -r /game/exefs/main && -r /game/exefs/sdk && -d /game/romfs ]] \
@@ -90,11 +94,19 @@ if [[ $mode == check ]]; then
       /work/obj-aarch64/settings-test/test-cheats \
       "/work/obj-aarch64/engine-module-test/t/"{good,hidden,badapi,noapi,declines,notamodule}/*.so
   fi
+  if printf '%s\n' 0.15.0 "$source_version" | sort -V -C; then
+    python3 /opt/mhgu/docker/check-elf.py aarch64 \
+      /work/obj-aarch64/interp-test/test-interp \
+      /work/obj-aarch64/villagehub-test/test-villagehub
+  fi
   python3 tests/test_build_arch.py
   python3 tests/test_linux_release.py
   exit 0
 fi
 
+# The public wrapper calls this entrypoint, not make dist. Guard the actual
+# attestation/package path as well as the convenience Make target.
+make "${args[@]}" check-generated
 compiler=$(clang --version)
 compiler=${compiler%%$'\n'*}
 python3 tools/dist.py record "$build" --version "$version" \

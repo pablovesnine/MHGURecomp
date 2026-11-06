@@ -13,11 +13,13 @@ Use L/R to cycle tabs, or click a tab label.
 | Controls | Face-button mapping, background input, combo input window, mouse sensitivity and keyboard/mouse keybinds. |
 | Network | Host port, search hosts, hub server, matchmaking key, hub check and Discord presence. |
 | Misc | Hub rules, monster HP scaling and per-quest overrides. |
-| Mods | Enable and order installed mods, and review file conflicts. |
+| Mods | Enable and order installed mods, review file conflicts, and open Forge in 0.15.0. |
 | Cheats | Toggle cheats and add a cheat. |
 | Menu Options | Language, theme, scale, panel placement, host confirmation button, button icons, save folder, exit policy, bonus content, Restart and Exit game. |
 
 Mods load from top to bottom, so a later mod wins unless you choose a different result for a conflict. Save the order, then restart. Cheat toggles apply on Save without a restart. Turning a cheat off undoes its code changes, but not values it already changed, such as money or items. In 0.14.3, close and reopen the settings menu to rescan new, changed or removed cheat files, then Save your selection. Earlier packages need a restart for new files. Cheats entered through **Add a cheat** work immediately.
+
+In 0.15.0, **Mods > Open the Forge menu** opens plugin settings over the paused host panel. It is disabled if no plugin title or ImGui render entry point is available. Cancel, the configured Forge menu key (Insert by default), or **Minus + Plus** (Start + Back) closes Forge and returns to the underlying settings panel when one is open. F1 also returns from Forge to that panel. Forge keeps its own confirm/cancel mapping. Release held buttons before returning to settings or gameplay.
 
 ## Navigation and help
 
@@ -71,6 +73,12 @@ The game does not move or synchronize saves. **Use the default folder** selects 
 This is FSR 3.1 temporal upscaling, not frame generation. Vulkan 1.2 alone is not enough, because the GPU also needs the FSR compute/storage capabilities that the renderer checks. If those checks fail, the log reports that FSR is disabled, though the image may still scale from the reduced render resolution. Object motion has separate GPU checks and can fall back to camera motion only.
 
 While FSR is running, MSAA stays at 1 (off) and FXAA stays off. This also applies if you save unrelated settings or set FSR to Off for the next restart. The AA rows show **Off (FSR)** when FSR is also enabled in the draft. Your saved AA preferences return after you disable FSR and restart the game.
+
+## Loading indicator
+
+Upstream 0.15.0 adds `[Performance] LoadingIndicator = On` for startup and shader-preparation feedback. It is INI-only, not a settings-panel row. Close the game before editing it, then restart for the change to apply. Set it to Off to disable the indicator. I have not validated startup rendering, FXAA output or GPU timings on the ARM64 device for this version.
+
+Village quests started from the Hub or Hunters' Pub can receive up to three extra Map items in the last empty supply-box slots in 0.15.0. Reserved delayed-delivery slots stay untouched. This does not validate real quest transitions, repeated game calls or multiplayer behavior on a device.
 
 ## Custom hub server
 

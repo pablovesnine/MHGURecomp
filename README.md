@@ -27,15 +27,17 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 
 ## Download
 
-I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.14.0). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
+I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.14.3). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
 
-The source transition targets upstream **0.14.3**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; the 0.14.3 behavior described below requires that source version. The downloadable package remains **0.14.0** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+The source transition targets upstream **0.15.0**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; the 0.15.0 behavior described below requires that source version. The downloadable package remains **0.14.3** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+
+Upstream 0.15.0 changes FXAA shaders and the mod interpreter, adds an optional loading/shader indicator and controller access to Forge, adjusts controller rumble updates, and adds up to three extra supply maps to Village quests started from the Hub or Pub. I have not measured its performance or tested those changes on an ARM64 GPU or physical controller. Upstream speedup figures are not measured results for this fork.
 
 Your device needs an ARM64 Linux userspace, glibc 2.39 or newer, a compatible C++ runtime and a desktop session. It also needs the Vulkan features required by the renderer, not just a matching version number. See [device requirements](docs/BUILD-LINUX-ARM64.md).
 
 ## Screenshots
 
-I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0 or 0.14.3, or predict performance on other devices.
+I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3 or 0.15.0, or predict performance on other devices.
 
 ![MHGU gameplay on AYN Odin 3](docs/screenshots/ayn-odin3-gameplay.jpg) ![Online multiplayer lobby list](docs/screenshots/ayn-odin3-online.jpg) ![morerokk's custom settings menu](docs/screenshots/ayn-odin3-menu.jpg)
 
@@ -47,7 +49,7 @@ Settings live in `mhgurecomp.ini`, with explanations in the file. To change them
 - `[Anti-aliasing]`: `MSAA` (Off / 2x / 4x / 8x), `FXAA` (On / Off), `FXAAMode` (Original by default, or 3_11 for FXAA 3.11 in place of GU's FXAA and sharper textures)
 - `[Upscaler]`: FSR 3.1 temporal upscaling, default Off, with NativeAA / Quality / Balanced / Performance / UltraPerformance modes, sharpness and motion/reactive controls. In 0.14.3, sharpness and reactive mask apply on Save; enable, quality, object motion and animated surfaces still need a restart. FSR replaces MSAA and FXAA and needs additional GPU capabilities. It does not generate frames. See [FSR](docs/SETTINGS_UI.md#fsr).
 - `[Graphics]`: `DrawDistance` (how far away people in villages and Hubs remain visible: 1 = the game's, 2 = twice as far, 0.5 = half, 0 = no limit, up to 10)
-- `[Performance]`: `FPS` (30 to 240), `VSync`, `ShowFPS` and `ShaderPrewarm`. Preparing shaders and pipelines in the background reduces missing draws and stutter on first use. Other combinations are prepared as needed. The supplied `pipelines.list` covers common areas with MSAA Off. Preparation time and cache size depend on your hardware, driver and settings.
+- `[Performance]`: `FPS` (30 to 240), `VSync`, `ShowFPS` and `ShaderPrewarm`. Preparing shaders and pipelines in the background reduces missing draws and stutter on first use. Other combinations are prepared as needed. The supplied `pipelines.list` covers common areas with MSAA Off. Preparation time and cache size depend on your hardware, driver and settings. In 0.15.0, `LoadingIndicator` defaults to On; it is INI-only and needs a restart. See [loading indicator](docs/SETTINGS_UI.md#loading-indicator).
 - `[Controls]`: `FaceButtons` (Position / Label), `MenuConfirm` (host settings confirmations only), `BackgroundInput` and `ComboInputWindow` (Lenient / Strict). In-game confirmation buttons are not remapped by `MenuConfirm`. See [host confirmation](docs/SETTINGS_UI.md#host-confirmation-button).
 - `[Mouse]`: `MouseSensitivity` (1 = default, 0.1 to 10)
 - `[Multiplayer]`: `Port` and `Join` for direct play, `Server` and `Key` for internet hubs, `SyncSmallMonsters` and `ShareUrgentCredit` (default On: clearing another hunter's Urgent quest counts for you if you have unlocked it).
@@ -63,7 +65,7 @@ Settings live in `mhgurecomp.ini`, with explanations in the file. To change them
 - SDL controllers use face-button position by default. Switch to labels in **Controls > Face buttons**. The game takes input from the connected controller you used most recently.
 - **Controls > Keybinds** remaps keyboard/mouse actions, with up to two bindings per action. Defaults include WASD movement, Left Shift to walk, mouse movement for the camera, Space for B, left mouse for X and right mouse for A.
 - Click the window to capture the mouse, and press Escape to release it. The mouse wheel changes the selected item without holding L.
-- F11 or Alt+Enter toggles fullscreen. F12 saves a screenshot in `shots/`. F1 or Minus + Plus opens the host settings menu, while Insert opens Forge separately.
+- F11 or Alt+Enter toggles fullscreen. F12 saves a screenshot in `shots/`. F1 or Minus + Plus opens the host settings menu, while Insert opens Forge separately. In 0.15.0, **Mods > Open the Forge menu** also works with a controller when plugins are available. Cancel or Minus + Plus closes Forge; if it opened over settings, it returns there.
 
 ### Multiplayer
 
@@ -91,7 +93,7 @@ To install a mod, put its folder in `mods/` and restart. The game loads mod laye
 - Archive merging combines changes to different entries in archives such as `resident_eng.arc`. Upstream 0.14.0 also supports partial `.arc` overlays that preserve untouched original entries. If two mods change the same entry, the later mod wins. Merged archives live in `cache/arcmerge/`.
 - Without an order file, mods load alphabetically. A hand-written `mods/load_order.txt` lists only the mods to load. In the **Mods** tab, you can enable or disable mods, change their order and review conflicts. Newly added mods are included unless you disable them. You can also use the suggested order. Save, then restart.
 - The port supports exefs `.pchtxt`, IPS and IPS32 patches and mod code modules. Patched functions and extra modules may run in the interpreter, so check `[mods]` diagnostics rather than assuming every patch works.
-- Forge `.nro` plugins load from a mod's `romfs/nativeNX/plugins/`, and the port handles the recognized Forge loader itself. Insert opens the Forge menu, though a mod can configure another key. Compatibility depends on the plugin, so check `[forge]` diagnostics.
+- Forge `.nro` plugins load from a mod's `romfs/nativeNX/plugins/`, and the port handles the recognized Forge loader itself. Insert opens the Forge menu, though a mod can configure another key. In 0.15.0, the Mods tab also has **Open the Forge menu** for controller navigation. Compatibility depends on the plugin, so check `[forge]` diagnostics.
 - The port already provides resolution settings, FPS caps and hub connectivity. You may not need an emulator-specific fix mod for these.
 
 Upstream recommends [Key Quest Markers](https://gamebanana.com/mods/727960) by PurplefinNeptuna for marking progression quests in the quest menu. Check each mod against your game version and back up saves before testing it.

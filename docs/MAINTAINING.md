@@ -37,6 +37,10 @@ The internal `bot/upstream-sync` branch exists only while an update is under tes
 
 Keeping a fork-owned build file can leave out an upstream build adjustment, so check those summaries when diagnosing incompatibilities. The generated release TSV is the only exception for protected paths: its bytes must match the trusted release record exactly. All other protected content and file modes stay unchanged.
 
+I also protect `runtime/hle/villagehub.c` to retain a bounded supply-box trace formatter. Upstream 0.15.0 advances a buffer pointer by snprintf's untruncated length; a full box can overrun the trace buffer with `MHGU_VQ_TRACE` enabled. Review future upstream edits to this file manually rather than dropping the safety fix. Other runtime paths remain shared.
+
+`tools/test_lift.py` is protected after reconciling its 0.15.0 conflict with my compiler/target/runner controls. Review future upstream changes to this test driver manually too; the surrounding recompiler tools and public test sources still merge normally.
+
 An unexpected shared-code conflict stops integration and updates one issue. If the blocker has not changed, automation does not start another build or create a duplicate issue. Resolve each file individually rather than using a blanket merge strategy. Automation closes the issue once the blocking upstream revision is incorporated. Failed tests do not count as a successful update. To retry an unchanged blocker, select `retry_validation` on a manual run.
 
 ## CI and images
@@ -44,6 +48,10 @@ An unexpected shared-code conflict stops integration and updates one issue. If t
 Pushes and PRs run syntax checks, ShellCheck, actionlint and offline Python regressions for policy, release state, documentation and privacy. These quick checks do not build Docker images or run QEMU.
 
 Full validation runs for a new eligible stable release or when you manually request **Linux fork checks and manual ARM64 validation**. It starts with quick checks, then uses Docker/QEMU to test compiler probes, the ARM64 runtime, settings/panel navigation, fault handling and ELF imports. Neither workflow receives a dump or tests the game or GPU.
+
+For source pins from 0.14.3, engine-module and cheat tests are mandatory. From 0.15.0, `test-interp` exercises public synthetic ARM instructions, predecoded operations and cache invalidation; `test-villagehub` checks synthetic supply slots and trace safety. The panel fixture also compiles with `MHGU_TEST_FORGE_MENU` to test disabled access and one-shot Forge requests without loading a plugin. Selection uses the tracked source pin, never the check-mode package version `0` or whether a test file happens to exist. Missing sources must fail.
+
+`tools/test_lift.py --interp-ops` adds differential predecoded-operation testing while retaining `--cc`, `--genarch`, signed-char compilation and `--runner`. These NSO-based differential tests require a local licensed dump and are not part of public CI. Public synthetic tests do not establish GPU correctness, physical-controller behavior or arbitrary concurrent guest-code patch safety.
 
 The tools image runs on a Linux x86_64 build PC and cross-compiles for ARM64. Keep that distinction clear in the build internals, because ARM64 is the only product. The build needs Docker Engine with a local Unix socket. Fedora's installed Moby engine works, so there is no need to replace a working installation.
 
@@ -83,6 +91,8 @@ python3 tools/publish-linux-release.py --dist .linux-release/publish.EXAMPLE
 `--dry-run` performs preflight checks without creating a tag, release or asset. The publisher checks the archive allowlist, ARM64 programs, metadata and checksums before creating a new draft. It uploads only the package and `SHA256SUMS`, verifies their hashes, then publishes. A failed upload leaves a recoverable draft. Retry the same files, not a rebuild with different archive timestamps. Different existing tags or assets stop publication rather than being replaced. Existing 0.13.1 assets remain unchanged.
 
 Changing the guest base or signed-char flags requires rebuilding both the runtime and the generated game library. The game-library identity includes the relevant headers and flags, so an old library cannot be relabeled safely. The public build uses revision-separated work directories.
+
+Generation records `gen.id` from the normalized generator sources only after both SDK and main generation succeed. Starting generation removes any older stamp, so a failed attempt cannot look current. `make check-generated` rejects absent or stale stamps before `make dist`; the Docker entrypoint also runs `check-generated` before recording metadata and packaging, because the public wrapper calls `tools/dist.py` directly. After generator changes, regenerate from the local dump instead of copying an old stamp.
 
 The project's license does not authorize redistribution of game-derived code. Keep licenses and required third-party sources intact.
 

@@ -344,23 +344,42 @@ class InterfaceTests(unittest.TestCase):
 
 
 class ImageTests(unittest.TestCase):
+    def test_generation_guard_is_on_the_real_packaging_path(self):
+        script = (ROOT / "tools/docker/build.sh").read_text()
+        guard = script.index('make "${args[@]}" check-generated')
+        record = script.index('python3 tools/dist.py record')
+        package = script.index('python3 tools/dist.py "$build"')
+        self.assertLess(script.index('rm -f "$build/build-metadata.json"'), guard)
+        self.assertLess(guard, record)
+        self.assertLess(record, package)
+        self.assertIn("dist: check-generated", (ROOT / "Makefile").read_text())
+
     def test_new_upstream_checks_are_version_gated_not_file_gated(self):
         script = (ROOT / "tools/docker/build.sh").read_text()
-        block = re.search(r"upstream_tests=\(\)\n(.*?)\nfi", script, re.S)
+        block = re.search(
+            r"upstream_tests=\(\)\n(.*?)\n(?=if \[\[ \$mode == release)",
+            script, re.S)
         self.assertIsNotNone(block)
         for version, expected in (
             ("0.14.0", ""), ("0.14.2", ""),
             ("0.14.3", "test-engine-modules\ntest-cheats"),
             ("0.14.10", "test-engine-modules\ntest-cheats"),
-            ("0.15.0", "test-engine-modules\ntest-cheats"),
+            ("0.15.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub"),
+            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub"),
         ):
             result = subprocess.run(
                 ["bash", "-euo", "pipefail", "-c",
-                 'version=0\nsource_version=$1\n' + block.group(0) +
-                 '\nprintf "%s\\n" "${upstream_tests[@]}"', "-", version],
+                 'version=0\nsource_version=$1\nargs=()\n' + block.group(0) +
+                 '\nprintf "%s\\n" "${upstream_tests[@]}"\n'
+                 'printf "%s\\n" "${args[@]}" >&2', "-", version],
                 capture_output=True, text=True, check=True,
             )
             self.assertEqual(result.stdout.strip(), expected, version)
+            self.assertEqual(
+                result.stderr.strip(),
+                "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU"
+                if version in ("0.15.0", "0.16.0") else "", version,
+            )
         self.assertIn('test-arcmerge "${upstream_tests[@]}"', script)
         self.assertIn(
             'engine-module-test/t/"{good,hidden,badapi,noapi,declines,notamodule}',

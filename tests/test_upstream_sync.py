@@ -242,6 +242,17 @@ class SyncTests(unittest.TestCase):
             self.git(self.repo, "show",
                      result["base"] + ":.github/maintenance/fork-policy.json"))
 
+    def test_village_trace_fix_has_exact_ownership_not_a_runtime_prefix(self):
+        policy = json.loads((SCRIPT.parent / "fork-policy.json").read_text())
+        self.assertEqual(sync.classify(policy, "runtime/hle/villagehub.c"),
+                         "keep")
+        self.assertEqual(sync.classify(policy, "tools/test_lift.py"), "keep")
+        for path in ("runtime/hle/hpscale.c", "runtime/interp.c",
+                     "runtime/dispatch.c", "runtime/settings_panel.cpp",
+                     "tests/test_interp.c",
+                     "tests/test_villagehub.c"):
+            self.assertEqual(sync.classify(policy, path), "shared", path)
+
     def test_removed_prefix_cannot_resurrect_new_files(self):
         self.commit("android/new/evil.c", "never resurrect\n")
         self.publish()
