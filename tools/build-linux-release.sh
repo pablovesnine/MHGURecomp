@@ -171,7 +171,7 @@ mkdir -p "$cache"
 rm -rf "$cache/src"
 mkdir -p "$cache/src/third_party"
 git archive "$revision" | tar -x -C "$cache/src"
-for library in ffmpeg sdl3 shaderc; do
+for library in ffmpeg sdl3 shaderc zstd; do
   mkdir -p "$cache/downloads/$library"
   ln -s "/work/downloads/$library" "$cache/src/third_party/$library"
 done
@@ -190,6 +190,18 @@ echo "linux-release: builder $image_id"
 # Use the validated immutable ID, not a tag that another process could retarget.
 "${engine_cmd[@]}" run --rm --platform linux/amd64 \
   "${user_args[@]}" "${mounts[@]}" "$image_id" "$mode" "$version" "$jobs" "$revision" "$image_id"
+if [[ $mode == check ]]; then
+  # Only the network-free second phase executes the protocol fixtures.
+  # Read the exact exported pin, not check mode's package version 0.
+  source_version=$(awk -F '\t' '$1 == "version" { print $2 }' \
+    "$cache/src/.github/maintenance/upstream-release.tsv")
+  [[ $source_version =~ ^[0-9]+(\.[0-9]+)*$ ]] || die "invalid exported source version"
+  if printf '%s\n' 0.15.1 "$source_version" | sort -V -C; then
+    "${engine_cmd[@]}" run --rm --network none --platform linux/amd64 \
+      "${user_args[@]}" "${mounts[@]}" "$image_id" network-check \
+      "$version" "$jobs" "$revision" "$image_id"
+  fi
+fi
 if [[ $mode == release ]]; then
   if [[ $publish == true ]]; then
     echo "linux-release: LinuxARM64-MHGURecomp.$version.tar.gz and SHA256SUMS are in $output/"

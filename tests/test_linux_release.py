@@ -146,6 +146,20 @@ class InterfaceTests(unittest.TestCase):
     def run_command(self):
         return next(command for command in self.commands() if "run" in command)
 
+    def test_0151_network_checks_use_a_second_offline_container(self):
+        self.git("--git-dir=" + str(self.upstream), "tag", "0.15.1")
+        self.pin_version("0.15.1")
+        result = self.run_script("--check", "--version", "0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        runs = [c for c in self.commands() if "run" in c]
+        self.assertEqual(len(runs), 2)
+        self.assertNotIn("--network", runs[0])
+        offline = runs[1]
+        self.assertEqual(offline[offline.index("--network") + 1], "none")
+        self.assertEqual(offline[-5], "network-check")
+        self.assertEqual(runs[0][-6], offline[-6])
+        self.assertFalse(any("/game" in part for c in runs for part in c))
+
     def test_release_paths_context_and_private_mount(self):
         (self.repo / "untracked-private.txt").write_text("must not be exported")
         result = self.release()
@@ -365,7 +379,8 @@ class ImageTests(unittest.TestCase):
             ("0.14.3", "test-engine-modules\ntest-cheats"),
             ("0.14.10", "test-engine-modules\ntest-cheats"),
             ("0.15.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub"),
-            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub"),
+            ("0.15.1", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins"),
+            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins"),
         ):
             result = subprocess.run(
                 ["bash", "-euo", "pipefail", "-c",
@@ -377,8 +392,12 @@ class ImageTests(unittest.TestCase):
             self.assertEqual(result.stdout.strip(), expected, version)
             self.assertEqual(
                 result.stderr.strip(),
+                ("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU\n"
+                 "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU "
+                 "-DMHGU_TEST_MOUSE_CAPTURE")
+                if version in ("0.15.1", "0.16.0") else
                 "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU"
-                if version in ("0.15.0", "0.16.0") else "", version,
+                if version == "0.15.0" else "", version,
             )
         self.assertIn('test-arcmerge "${upstream_tests[@]}"', script)
         self.assertIn(

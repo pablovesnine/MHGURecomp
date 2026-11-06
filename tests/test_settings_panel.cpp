@@ -252,6 +252,27 @@ int main() {
     idle();
     selected("bind.6");
     assert(!settings_panel_mouse(SDL_BUTTON_LEFT));  // (not choosing: a click is the menu's)
+#ifdef MHGU_TEST_MOUSE_CAPTURE
+    // The pointer over Cancel must not prevent capturing a side button.
+    down();
+    selected("bind.7");
+    confirm();
+    selected("choice.0");
+    confirm();
+    selected("capture.cancel");
+    {
+        ImGuiWindow *w = ImGui::GetCurrentContext()->NavWindow;
+        ImRect r = ImGui::WindowRectRelToAbs(w, w->NavRectRel[0]);
+        ImGui::GetIO().AddMousePosEvent(r.GetCenter().x, r.GetCenter().y);
+        idle();
+    }
+    assert(!settings_panel_mouse(SDL_BUTTON_LEFT));
+    assert(settings_panel_mouse(SDL_BUTTON_X1));
+    idle();
+    ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+    idle();
+    selected("bind.7");
+#endif
     back();
     selected("keybinds");
     assert(settings_panel_dirty());
@@ -260,6 +281,9 @@ int main() {
     selected("save");
     confirm();
     assert(config_live_bind(BIND_B, 0) == SDL_SCANCODE_G && config_live_bind(BIND_B, 1) == KEY_MOUSE + SDL_BUTTON_MIDDLE);
+#ifdef MHGU_TEST_MOUSE_CAPTURE
+    assert(config_live_bind(BIND_X, 0) == KEY_MOUSE + SDL_BUTTON_X1);
+#endif
     press(ImGuiKey_Home);
     down(4);
     confirm();
@@ -355,6 +379,8 @@ int main() {
     down(4);
     selected("mods.conflicts");
     down();
+    selected("mods.suggest");  // choosing Aaa left the draft in a non-suggested order
+    down();
     selected("mods.rescan");
     down();
     selected("reset");
@@ -362,7 +388,7 @@ int main() {
     forge_titles = true;
     idle();
     press(ImGuiKey_Home);
-    down(6);
+    down(7);  // four mods, conflicts, suggested order, rescan, then Forge
     selected("mods.forge");
     confirm();
     assert(settings_panel_take_forge());

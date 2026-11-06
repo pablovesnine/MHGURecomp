@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -51,6 +52,77 @@ def load_dist():
 
 
 class BuildTests(unittest.TestCase):
+    def test_0151_cpu_metadata_has_no_x86_requirement_on_arm64(self):
+        state = dict(line.split("\t", 1) for line in
+                     (ROOT / ".github/maintenance/upstream-release.tsv")
+                     .read_text().splitlines())
+        if tuple(map(int, state["version"].split("."))) < (0, 15, 1):
+            self.skipTest("CPU metadata starts at source pin 0.15.1")
+        source = (ROOT / "tools/gamelib_entry.c").read_text()
+        declaration = re.search(
+            r"GAMELIB_EXPORT const uint32_t mhgugame_cpu_needs =.*?;",
+            source, re.S)
+        self.assertIsNotNone(declaration)
+        result = subprocess.run(
+            ["clang", "--target=aarch64-linux-gnu", "-march=armv8-a",
+             "-E", "-P", "-x", "c", "-"],
+            input=declaration.group(0), capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(result.stdout, r"mhgugame_cpu_needs = 0\s*;")
+        loader = (ROOT / "runtime/gamelib.c").read_text()
+        guard = loader.index("#if defined(__x86_64__) || defined(_M_X64)")
+        end = loader.index("#else", guard)
+        self.assertIn('__builtin_cpu_supports("avx2")', loader[guard:end])
+        self.assertNotIn("__builtin_cpu_", loader[end:])
+
+    def test_crossplay_dependency_recipes_keep_the_target_abi(self):
+        # Empty prerequisites let the old pin inspect future compile recipes.
+        extra = (
+            "runtime/net/ryusrv/server.cpp:\n"
+            "runtime/net/ryusrv.h:\n"
+            "third_party/enet/unix.c:\n"
+        )
+        result = subprocess.run(
+            ["make", "-n", "-f", "Makefile", "-f", "-",
+             "/test/objects/rt/net/ryusrv/server.o",
+             "/test/objects/enet/unix.o", "HOST_ARCH=x86_64",
+             "SYSROOT=/test/sysroot", "O=/test/objects",
+             "SDL3=system", "SHADERC=system", "ZSTD=system"],
+            input=extra, cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        compiles = [line for line in result.stdout.splitlines()
+                    if line.startswith(("clang ", "clang++ "))]
+        self.assertEqual(len(compiles), 2)
+        for command in compiles:
+            for flag in ("--target=aarch64-linux-gnu",
+                         "--sysroot=/test/sysroot", "-fsigned-char"):
+                self.assertIn(flag, command)
+            self.assertNotIn("-mavx", command)
+        self.assertIn("-std=c++20", compiles[0])
+        self.assertIn("-DHAS_POLL", compiles[1])
+
+    def test_zstd_is_verified_cross_compiled_and_packaged(self):
+        result = subprocess.run(
+            ["make", "-n", "build/licenses/zstd.txt", "HOST_ARCH=x86_64",
+             "SYSROOT=/test/sysroot", "O=/test/objects",
+             "SDL3=system", "SHADERC=system"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for token in (
+            "tools/fetch-verified.sh", "zstd-1.5.7.tar.gz",
+            "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3",
+            "--target=aarch64-linux-gnu", "--sysroot=/test/sysroot",
+            "-fsigned-char", "-DZSTD_DISABLE_ASM", "llvm-ar rcs",
+            "src/LICENSE",
+        ):
+            self.assertIn(token, result.stdout)
+        self.assertIn("zstd", load_dist().LICENSES)
+        wrapper = (ROOT / "tools/build-linux-release.sh").read_text()
+        self.assertIn("for library in ffmpeg sdl3 shaderc zstd;", wrapper)
+
     def test_village_target_cross_compiles_and_uses_runner(self):
         result = subprocess.run(
             ["make", "-n", "test-villagehub", "HOST_ARCH=x86_64",
@@ -73,7 +145,8 @@ class BuildTests(unittest.TestCase):
         fixture = (ROOT / "tests/test_settings_panel.cpp").read_text()
         for token in ("forge_plugin_titles", "forge_plugins_have",
                       "settings_panel_take_forge", 'selected("mods.forge")',
-                      "MHGU_TEST_FORGE_MENU"):
+                      "MHGU_TEST_FORGE_MENU", "MHGU_TEST_MOUSE_CAPTURE",
+                      "SDL_BUTTON_X1"):
             self.assertIn(token, fixture)
         result = subprocess.run(
             ["make", "-n", "test-settings-panel", "HOST_ARCH=x86_64",
@@ -320,7 +393,7 @@ class PackageTests(unittest.TestCase):
         self.build = self.root / "build"
         self.build.mkdir()
         (self.build / "licenses").mkdir()
-        for name in ("LICENSE", "THIRD_PARTY_NOTICES", "FFmpeg", "SDL3", "shaderc"):
+        for name in ("LICENSE", "THIRD_PARTY_NOTICES", "FFmpeg", "SDL3", "shaderc", "zstd"):
             (self.build / "licenses" / (name + ".txt")).write_text("license fixture")
         (self.build / "pipelines.list").write_text("pipeline fixture")
         for name in ("mhgurecomp", "mhgugame.so"):

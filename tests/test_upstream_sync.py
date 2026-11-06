@@ -247,6 +247,11 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(sync.classify(policy, "runtime/hle/villagehub.c"),
                          "keep")
         self.assertEqual(sync.classify(policy, "tools/test_lift.py"), "keep")
+        self.assertEqual(sync.classify(policy, "tests/test_settings_panel.cpp"),
+                         "keep")
+        for path in ("tools/test-crossplay.py", "tests/test_crossplay_runner.py",
+                     "tests/crossplay_fixture.c"):
+            self.assertEqual(sync.classify(policy, path), "keep")
         for path in ("runtime/hle/hpscale.c", "runtime/interp.c",
                      "runtime/dispatch.c", "runtime/settings_panel.cpp",
                      "tests/test_interp.c",

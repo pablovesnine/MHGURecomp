@@ -6,12 +6,15 @@
       "tools/.dockerignore", "tools/desktop-arch.mk", "tools/dist.py", "tools/test_lift.py",
       "tools/build-linux-release.sh", "tools/upstream-version.sh", "tools/publish-linux-release.py",
       "tools/fetch-verified.sh", "tests/test_source_fetch.py",
+      "tools/test-crossplay.py", "tests/test_crossplay_runner.py",
+      "tests/crossplay_fixture.c",
       "updater/updater.h", "runtime/hle/villagehub.c",
       "tests/test_build_arch.py", "tests/test_linux_release.py", "tests/test_fork_docs.py",
       "tests/test_upstream_sync.py", "tests/test_automation_workflows.py",
       "tests/test_upstream_version.py", "tests/test_release_sync.py",
       "tests/test_repository_layout.py", "tests/test_release_publish.py",
-      "tests/test_arm64_runtime.py", "tests/test_arm64_abi.c", "tests/test_arcmerge.c"
+      "tests/test_arm64_runtime.py", "tests/test_arm64_abi.c", "tests/test_arcmerge.c",
+      "tests/test_settings_panel.cpp"
     ],
     "prefixes": [".github/", "docs/", "tools/docker/"]
   },

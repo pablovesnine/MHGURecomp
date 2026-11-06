@@ -48,11 +48,11 @@ def linux_tab_labels(declaration):
 
 
 class ForkDocumentationTests(unittest.TestCase):
-    def test_0150_source_package_and_validation_boundaries(self):
+    def test_0151_source_package_and_validation_boundaries(self):
         readme = (ROOT / "README.md").read_text()
         guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
         maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
-        self.assertIn("targets upstream **0.15.0**", readme)
+        self.assertIn("targets upstream **0.15.1**", readme)
         self.assertIn("package remains **0.14.3**", readme)
         self.assertIn("/releases/tag/0.14.3", readme)
         for text in ("LoadingIndicator", "INI-only", "restart",
@@ -64,6 +64,11 @@ class ForkDocumentationTests(unittest.TestCase):
                      "MHGU_TEST_FORGE_MENU", "villagehub.c"):
             self.assertIn(text, maintaining)
         self.assertIn("not measured", readme)
+        for text in ("RyuServe", "RoomServe", "restart", "experimental",
+                     "HP scaling", "passphrase"):
+            self.assertIn(text, guide)
+        self.assertIn("--network none", maintaining)
+        self.assertIn("MHGU_TEST_MOUSE_CAPTURE", maintaining)
 
     def test_tab_parser_preserves_all_linux_tabs_and_excludes_other_targets(self):
         declaration = (

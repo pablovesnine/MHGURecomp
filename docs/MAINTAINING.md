@@ -41,6 +41,8 @@ I also protect `runtime/hle/villagehub.c` to retain a bounded supply-box trace f
 
 `tools/test_lift.py` is protected after reconciling its 0.15.0 conflict with my compiler/target/runner controls. Review future upstream changes to this test driver manually too; the surrounding recompiler tools and public test sources still merge normally.
 
+I protect `tests/test_settings_panel.cpp` after reconciling 0.15.1's constant Forge stubs with the controlled availability and one-shot-request assertions. I ported the upstream Mouse4 case explicitly, under `MHGU_TEST_MOUSE_CAPTURE`; the corrected Forge navigation includes the conditional suggested-order row. Review future fixture changes manually. The runtime panel and other public tests remain shared.
+
 An unexpected shared-code conflict stops integration and updates one issue. If the blocker has not changed, automation does not start another build or create a duplicate issue. Resolve each file individually rather than using a blanket merge strategy. Automation closes the issue once the blocking upstream revision is incorporated. Failed tests do not count as a successful update. To retry an unchanged blocker, select `retry_validation` on a manual run.
 
 ## CI and images
@@ -50,6 +52,12 @@ Pushes and PRs run syntax checks, ShellCheck, actionlint and offline Python regr
 Full validation runs for a new eligible stable release or when you manually request **Linux fork checks and manual ARM64 validation**. It starts with quick checks, then uses Docker/QEMU to test compiler probes, the ARM64 runtime, settings/panel navigation, fault handling and ELF imports. Neither workflow receives a dump or tests the game or GPU.
 
 For source pins from 0.14.3, engine-module and cheat tests are mandatory. From 0.15.0, `test-interp` exercises public synthetic ARM instructions, predecoded operations and cache invalidation; `test-villagehub` checks synthetic supply slots and trace safety. The panel fixture also compiles with `MHGU_TEST_FORGE_MENU` to test disabled access and one-shot Forge requests without loading a plugin. Selection uses the tracked source pin, never the check-mode package version `0` or whether a test file happens to exist. Missing sources must fail.
+
+From 0.15.1, `test-crossplay-bins` builds five public AArch64 fixtures with Unix ENet, bundled verified zstd 1.5.7 and C++20. The same immutable tools image then runs `test-crossplay` in a second Docker container with `--network none`. The supervisor refuses any namespace with interfaces other than loopback, checks child exit codes and final assertions, enforces deadlines and reaps every fixture process. It tests room/client traffic, Ryu client traffic with a Python stub and the embedded C++ server, and a mixed synthetic hub using the production embedded servers. It does not run upstream's Windows shell launchers, whose error handling can hide failures.
+
+The tests use the production room server rather than the weak room stand-in, whose proxy offsets are incorrect. Fixture initialization only makes readiness output line-buffered and matches Linux runtime SIGPIPE handling. No real emulator or game participates. Synthetic success does not validate passphrase enforcement, repeated bridge teardown/restart, departed-member cleanup or real game-packet rewriting. Keep those separate from transport coverage.
+
+I retain source SPDX headers and include the suyu Emulator Project MIT attribution for the embedded C++ server in `THIRD_PARTY_NOTICES`. ENet's notice and the bundled zstd license also travel with the package. The new CPU metadata remains x86-guarded; ARM64 does not require AVX2. The generated game library and loader must still be rebuilt together when their identity changes.
 
 `tools/test_lift.py --interp-ops` adds differential predecoded-operation testing while retaining `--cc`, `--genarch`, signed-char compilation and `--runner`. These NSO-based differential tests require a local licensed dump and are not part of public CI. Public synthetic tests do not establish GPU correctness, physical-controller behavior or arbitrary concurrent guest-code patch safety.
 

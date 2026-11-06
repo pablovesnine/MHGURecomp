@@ -20,7 +20,7 @@ import time
 
 PROGRAMS = ("mhgurecomp", "mhgugame.so")
 METADATA = "build-metadata.json"
-LICENSES = ("LICENSE", "THIRD_PARTY_NOTICES", "FFmpeg", "SDL3", "shaderc")
+LICENSES = ("LICENSE", "THIRD_PARTY_NOTICES", "FFmpeg", "SDL3", "shaderc", "zstd")
 DATA_NOTE = ("Put your own dump of Monster Hunter Generations Ultimate 1.4.0 here: "
              "the exefs and romfs folders\n(data/exefs/main, data/romfs/...).\n")
 

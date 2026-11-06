@@ -101,6 +101,18 @@ Key = my-private-group
 
 The hub relays internet connections, so players do not need to forward their own game ports. For direct internet play without a hub, the host must be reachable. Forward the host's chosen game port for TCP and UDP, then enter its public address in each joining player's **Search hosts** field. LAN discovery does not need an internet hub.
 
-I do not include a dedicated hub server in this repository or ARM64 package. To run one separately, follow the [upstream 0.14.3 server instructions](https://github.com/morerokk/MHGURecomp/tree/851a0a5fbe70249fdace7e79d974fbde5e88892d/server). The server operator needs to make the chosen hub port reachable for TCP and UDP. That is separate from players forwarding game ports. The client and server protocols must be compatible. I have not tested a self-hosted server deployment on the ARM64 device.
+I do not include a standalone dedicated hub-server product in this repository or ARM64 package. To run the native hub service separately, follow the [upstream 0.14.3 server instructions](https://github.com/morerokk/MHGURecomp/tree/851a0a5fbe70249fdace7e79d974fbde5e88892d/server). That service is distinct from the optional embedded emulator servers in 0.15.1. The native server operator needs to make the chosen hub port reachable for TCP and UDP. That is separate from players forwarding game ports. The client and server protocols must be compatible. I have not tested a self-hosted server deployment on the ARM64 device.
+
+### Experimental emulator crossplay
+
+Upstream 0.15.1 adds experimental Ryujinx-LDN and suyu-family room transports. They require matching MHGU 1.4.0 game versions, but I have not tested actual emulator interoperability. These are INI-only `[Multiplayer]` options, not new Network-tab controls. Close the game before editing them, then restart; do not assume the existing live native-server controls reconfigure these transports.
+
+- `RyuServers`, `RyuHost` and `RyuPassphrase` default to empty. `RyuServers` lists servers to search, with TCP port 30456 by default; `RyuHost` selects where to create a hub. An empty passphrase means public lobbies.
+- `RoomServer`, `RoomPassword` and `RoomName` default to empty, and `RoomHost` defaults to Off. A configured room uses UDP/ENet port 24872 by default. An empty name becomes MHGU Player.
+- `RyuServe` and `RoomServe` default to Off. Enabling them starts the corresponding embedded server while local play is open. Their port settings are `RyuServePort` and `RoomServePort`; zero selects 30456 and 24872 respectively, not a random port. Embedded listeners bind all IPv4 interfaces, not just loopback.
+
+I do not recommend exposing these embedded servers to the public Internet. They provide no encrypted transport. The embedded Ryu server's passphrase parsing differs from the client's, and joining a known lobby ID does not enforce all scan-time restrictions. Do not rely on a private passphrase or a reject setting as authentication. Use only trusted peers in a controlled, isolated environment.
+
+Small-monster synchronization is suppressed in crossplay, but the claim that HP scaling is disabled is not implemented consistently: local non-unit HP factors can still apply. Leave HP factors at 1.0 when exploring this mode; that is a precaution, not a validation of multiplayer consistency. Repeated bridge teardown/restart and departed room members also have unresolved lifecycle limits. I have not tested real hubs, game packet translation or those lifecycle cases on ARM64.
 
 For installation and troubleshooting, see [ARM64 device requirements](BUILD-LINUX-ARM64.md).

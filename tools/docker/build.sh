@@ -8,7 +8,8 @@ version=$2
 jobs=$3
 revision=$4
 image_id=$5
-[[ $mode == check || $mode == release ]] || die "expected release or check"
+[[ $mode == check || $mode == network-check || $mode == release ]] \
+  || die "expected release, check or network-check"
 [[ $version =~ ^[0-9]+(\.[0-9]+)*$ ]] || die "invalid version"
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || die "invalid job count"
 [[ $revision =~ ^[0-9a-f]{40}$ && $image_id =~ ^sha256:[0-9a-f]{64}$ ]] \
@@ -66,6 +67,10 @@ if printf '%s\n' 0.15.0 "$source_version" | sort -V -C; then
   upstream_tests+=(test-interp test-villagehub)
   args+=("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU")
 fi
+if printf '%s\n' 0.15.1 "$source_version" | sort -V -C; then
+  upstream_tests+=(test-crossplay-bins)
+  args+=("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU -DMHGU_TEST_MOUSE_CAPTURE")
+fi
 if [[ $mode == release ]]; then
   [[ -r /game/exefs/main && -r /game/exefs/sdk && -d /game/romfs ]] \
     || die "dump is unreadable in Docker; check ownership, ACLs and SELinux"
@@ -75,6 +80,19 @@ if [[ $mode == release ]]; then
   mv /work/generated.new /work/generated
 else
   test ! -d /work/generated
+fi
+
+if [[ $mode == network-check ]]; then
+  printf '%s\n' 0.15.1 "$source_version" | sort -V -C \
+    || die "network-check needs source 0.15.1 or later"
+  python3 /opt/mhgu/docker/check-elf.py aarch64 \
+    /work/obj-aarch64/crossplay-test/test-room \
+    /work/obj-aarch64/crossplay-test/test-ryuldn \
+    /work/obj-aarch64/crossplay-test/test-xbridge \
+    /work/obj-aarch64/crossplay-test/emu-room \
+    /work/obj-aarch64/crossplay-test/ryusrv-main
+  make "${args[@]}" test-crossplay
+  exit 0
 fi
 
 pilot

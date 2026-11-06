@@ -29,15 +29,17 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 
 I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.14.3). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
 
-The source transition targets upstream **0.15.0**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; the 0.15.0 behavior described below requires that source version. The downloadable package remains **0.14.3** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+The source transition targets upstream **0.15.1**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; behavior added in 0.15.0 or 0.15.1 requires the corresponding source version. The downloadable package remains **0.14.3** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
 
 Upstream 0.15.0 changes FXAA shaders and the mod interpreter, adds an optional loading/shader indicator and controller access to Forge, adjusts controller rumble updates, and adds up to three extra supply maps to Village quests started from the Hub or Pub. I have not measured its performance or tested those changes on an ARM64 GPU or physical controller. Upstream speedup figures are not measured results for this fork.
+
+Upstream 0.15.1 adds experimental emulator crossplay, optional embedded servers, Mouse4/Mouse5 capture over the keybind dialog, and a smithy-preview adjustment. I keep the new network endpoints disabled by default. The server access controls and connection lifecycle have known limitations; I do not recommend public Internet exposure or treat passphrases as a security boundary. See [experimental crossplay](docs/SETTINGS_UI.md#experimental-emulator-crossplay). Public transport fixtures are not a real emulator, game or device test.
 
 Your device needs an ARM64 Linux userspace, glibc 2.39 or newer, a compatible C++ runtime and a desktop session. It also needs the Vulkan features required by the renderer, not just a matching version number. See [device requirements](docs/BUILD-LINUX-ARM64.md).
 
 ## Screenshots
 
-I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3 or 0.15.0, or predict performance on other devices.
+I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3, 0.15.0 or 0.15.1, or predict performance on other devices.
 
 ![MHGU gameplay on AYN Odin 3](docs/screenshots/ayn-odin3-gameplay.jpg) ![Online multiplayer lobby list](docs/screenshots/ayn-odin3-online.jpg) ![morerokk's custom settings menu](docs/screenshots/ayn-odin3-menu.jpg)
 

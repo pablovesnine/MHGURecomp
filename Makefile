@@ -100,9 +100,26 @@ else
 SHADERC_DEPS := $(SHADERC_DIR)/lib/libshaderc_combined.a
 SHADERC_LIBS := $(SHADERC_DEPS)
 endif
+# Room packets use zstd. Build the pinned portable C library for the same
+# target/sysroot as the runtime; never pick up an amd64 host archive.
+ZSTD          ?= bundled
+ZSTD_VER      := 1.5.7
+ZSTD_SHA256   := eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
+ZSTD_TAR      := third_party/zstd/zstd-$(ZSTD_VER).tar.gz
+ZSTD_DIR      := $(O)/zstd-$(ZSTD_VER)
+ZSTD_FLAGS    := -O2 -fPIC -fsigned-char -DZSTD_DISABLE_ASM -DZSTD_LEGACY_SUPPORT=0 -DZSTD_NO_TRACE -DXXH_NAMESPACE=ZSTD_
+ZSTD_AR       ?= llvm-ar
+ifeq ($(ZSTD),system)
+ZSTD_DEPS :=
+ZSTD_LIBS := -lzstd
+else
+ZSTD_DEPS := $(ZSTD_DIR)/lib/libzstd.a
+ZSTD_LIBS := $(ZSTD_DEPS)
+endif
 # the libraries' headers, for everything compiled here (the stamps: built before anything includes them)
-LIB_INC    := $(if $(SDL_DEPS),-I$(SDL3_DIR)/include -DMHGU_SDL_BUNDLED) $(if $(SHADERC_DEPS),-I$(SHADERC_DIR)/include)
-LIB_STAMPS := $(if $(SDL_DEPS),$(SDL3_DIR)/.built) $(if $(SHADERC_DEPS),$(SHADERC_DIR)/.built)
+LIB_INC    := $(if $(SDL_DEPS),-I$(SDL3_DIR)/include -DMHGU_SDL_BUNDLED) $(if $(SHADERC_DEPS),-I$(SHADERC_DIR)/include) \
+              $(if $(ZSTD_DEPS),-I$(ZSTD_DIR)/include)
+LIB_STAMPS := $(if $(SDL_DEPS),$(SDL3_DIR)/.built) $(if $(SHADERC_DEPS),$(SHADERC_DIR)/.built) $(if $(ZSTD_DEPS),$(ZSTD_DIR)/.built)
 
 EXE      := $(B)/mhgurecomp
 OSFLAGS  := -fsigned-char
@@ -112,7 +129,7 @@ FFMPEG_CONF += --enable-pic
 # (--exclude-libs: the static libraries linked in - SDL3, shaderc with glslang, FFmpeg - stay inside; only the runtime's
 # own functions are exported, for the game code library. A Vulkan layer or overlay with its own glslang or SDL then
 # doesn't bind to ours, as happened with ImGui: see IMGUIFLAGS.)
-LDFLAGS  := -fuse-ld=lld -rdynamic -Wl,--exclude-libs,ALL $(SDL_LIBS) $(AV_LIBS) -lvulkan $(SHADERC_LIBS) -lpthread -ldl -lm
+LDFLAGS  := -fuse-ld=lld -rdynamic -Wl,--exclude-libs,ALL $(SDL_LIBS) $(AV_LIBS) -lvulkan $(SHADERC_LIBS) $(ZSTD_LIBS) -lpthread -ldl -lm
 # The programs start with glibc GLIBC_MAX or later (Ubuntu 24.04, Linux Mint 22, Debian 13, SteamOS): calls to the
 # functions newer glibc versions gave a new symbol version go to the old one (runtime/platform/linux_glibc.c), and the
 # link checks that nothing newer is left.
@@ -140,8 +157,24 @@ SHADER_ID := $(shell cat $(SHADER_SRCS) | tr -d '\r' | sha256sum | cut -c1-16)
 # development only; it does not establish release provenance.
 VERSION ?= $(shell git describe --tags 2>/dev/null || echo unknown)
 
-RT_OBJ   = $(patsubst runtime/%.c,$(O)/rt/%.o,$(RT_SRC)) $(RT_CXX) $(O)/rt/overlay.o $(O)/rt/settings_panel.o $(IMGUI_OBJ) \
-           $(O)/updater/sha256.o
+RT_OBJ   = $(patsubst runtime/%.c,$(O)/rt/%.o,$(RT_SRC)) $(RYUSRV_OBJ) $(RT_CXX) $(O)/rt/overlay.o $(O)/rt/settings_panel.o $(IMGUI_OBJ) \
+           $(O)/updater/sha256.o $(ENET_OBJ)
+RYUSRV_OBJ := $(patsubst runtime/net/ryusrv/%.cpp,$(O)/rt/net/ryusrv/%.o,$(wildcard runtime/net/ryusrv/*.cpp))
+RYUSRVFLAGS := -std=c++20 -O2 -g -Wall -fsigned-char -Iruntime/net/ryusrv/shim -Iruntime/net/ryusrv
+$(O)/rt/net/ryusrv/%.o: runtime/net/ryusrv/%.cpp $(wildcard runtime/net/ryusrv/*.h runtime/net/ryusrv/shim/*/*.h) runtime/net/ryusrv.h
+	@mkdir -p $(dir $@)
+	$(CXX) $(TARGET_FLAGS) $(RYUSRVFLAGS) -c $< -o $@
+# The old source pin has no rooms. Once room.c exists, every ENet input is
+# mandatory: a missing source must not silently produce a partial library.
+ENET      := third_party/enet
+ifneq ($(wildcard runtime/net/room.c),)
+ENET_SRC  := $(addprefix $(ENET)/,callbacks.c compress.c host.c list.c packet.c peer.c protocol.c unix.c)
+endif
+ENET_OBJ  := $(patsubst $(ENET)/%.c,$(O)/enet/%.o,$(ENET_SRC))
+ENETFLAGS := -O2 -g -w -fsigned-char -I$(ENET)/include -DHAS_FCNTL -DHAS_POLL -DHAS_GETADDRINFO -DHAS_GETNAMEINFO -DHAS_INET_PTON -DHAS_INET_NTOP -DHAS_MSGHDR_FLAGS -DHAS_SOCKLEN_T
+$(O)/enet/%.o: $(ENET)/%.c $(wildcard $(ENET)/include/enet/*.h)
+	@mkdir -p $(dir $@)
+	$(CC) $(TARGET_FLAGS) $(ENETFLAGS) -c $< -o $@
 # (updater/sha256.c: runtime/net/ldn.c hashes the matchmaking key with it)
 # Dear ImGui with cimgui's C API (third_party/cimgui: Forge plugins' ImGui, runtime/forge_imgui.c, overlay.cpp)
 IMGUI    := third_party/cimgui
@@ -153,7 +186,7 @@ IMGUI_OBJ := $(patsubst $(IMGUI)/%.cpp,$(O)/imgui/%.o,$(IMGUI_SRC))
 # code crashes at swap-chain creation. Our own code and the Forge plugins' ImGui thunks bind inside the executable.)
 IMGUIFLAGS := -O2 -g -fvisibility=hidden -DCIMGUI_NO_EXPORT -I$(IMGUI) -I$(IMGUI)/imgui $(OSFLAGS) $(LIB_INC)
 # VulkanMemoryAllocator is vendored for the isolated tools build.
-RTFLAGS  := -O2 -g -fno-strict-aliasing -Wall -Wno-unused-function -Iruntime -Ithird_party/vk_mem_alloc -I$(IMGUI) $(OSFLAGS) $(LIB_INC)
+RTFLAGS  := -O2 -g -fno-strict-aliasing -Wall -Wno-unused-function -Iruntime -Ithird_party/vk_mem_alloc -I$(IMGUI) -I$(ENET)/include $(OSFLAGS) $(LIB_INC)
 # FSR 3.1 temporal upscaler (runtime/nvn/vulkan/fsr.c): third_party/fsr-vulkan = AMD FidelityFX SDK 1.1.4's FSR 3.1.4
 # upscaler (host scheduler, Vulkan backend, its GLSL) + a portable C wrapper, all MIT. No AMD binaries: the shaders are
 # compiled with shaderc from the embedded GLSL when first used (src/ffx_fsr3_shaderblobs.cpp), linked into the executable.
@@ -198,6 +231,31 @@ test-villagehub:
 	mkdir -p $(O)/villagehub-test
 	$(CC) $(TARGET_FLAGS) -fuse-ld=lld -std=gnu11 -O1 -fsigned-char -fno-strict-aliasing -Iruntime -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_villagehub.c -o $(O)/villagehub-test/test-villagehub
 	$(TEST_RUNNER) $(O)/villagehub-test/test-villagehub
+
+# Build before entering the offline container; no SDL/GPU/game data needed.
+CROSSPLAY := $(O)/crossplay-test
+CROSSPLAY_FLAGS := -std=gnu11 -O1 -g -Wall -Wno-unused-function -fsigned-char -fno-strict-aliasing -Iruntime -I$(ENET)/include $(if $(ZSTD_DEPS),-I$(ZSTD_DIR)/include) -pthread
+CROSSPLAY_INIT := $(CROSSPLAY)/fixture.o
+.PHONY: test-crossplay-bins test-crossplay
+test-crossplay-bins: $(addprefix $(CROSSPLAY)/,test-room test-ryuldn test-xbridge emu-room ryusrv-main)
+test-crossplay: test-crossplay-bins
+	$(PY) tools/test-crossplay.py --bins "$(abspath $(CROSSPLAY))" --runner "$(TEST_RUNNER)"
+
+$(CROSSPLAY_INIT): tests/crossplay_fixture.c
+	@mkdir -p $(dir $@)
+	$(CC) $(TARGET_FLAGS) -O1 -fsigned-char -c $< -o $@
+
+$(CROSSPLAY)/test-room: tests/test_room.c runtime/net/room.c runtime/net/roomsrv.c $(ENET_OBJ) $(ZSTD_DEPS) $(CROSSPLAY_INIT)
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(CROSSPLAY_FLAGS) $(filter %.c %.o,$^) $(ZSTD_LIBS) -o $@
+$(CROSSPLAY)/test-ryuldn: tests/test_ryuldn.c runtime/net/ryuldn.c $(CROSSPLAY_INIT)
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(CROSSPLAY_FLAGS) $^ -o $@
+$(CROSSPLAY)/test-xbridge: tests/test_xbridge.c runtime/net/xbridge.c runtime/net/ryuldn.c runtime/net/room.c $(ENET_OBJ) $(ZSTD_DEPS) $(CROSSPLAY_INIT)
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(CROSSPLAY_FLAGS) $(filter %.c %.o,$^) $(ZSTD_LIBS) -o $@
+$(CROSSPLAY)/emu-room: tests/emu_room.c runtime/net/room.c $(ENET_OBJ) $(ZSTD_DEPS) $(CROSSPLAY_INIT)
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(CROSSPLAY_FLAGS) $(filter %.c %.o,$^) $(ZSTD_LIBS) -o $@
+$(CROSSPLAY)/ryusrv-main: tests/ryusrv_main.cpp $(RYUSRV_OBJ)
+	@mkdir -p $(dir $@)
+	$(CXX) $(TARGET_FLAGS) -fuse-ld=lld $(RYUSRVFLAGS) $^ -pthread -o $@
 
 .PHONY: test-settings
 test-settings: $(LIB_STAMPS)
@@ -260,7 +318,7 @@ $(O)/fsr/%.cpp.o: $(FSR)/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(TARGET_FLAGS) -std=c++17 $(FSRFLAGS) -include $(FSR)/src/ffx_1_1_4_portability.hpp -c $< -o $@
 
-$(EXE): $(RT_OBJ) $(AV_DEPS)
+$(EXE): $(RT_OBJ) $(AV_DEPS) $(ZSTD_DEPS)
 	@mkdir -p $(dir $@)
 	$(CXX) $(TARGET_FLAGS) -o $@ $^ $(LDFLAGS)
 	$(GLIBC_CHECK)
@@ -270,7 +328,7 @@ $(O)/updater/sha256.o: updater/sha256.c updater/updater.h
 	@mkdir -p $(dir $@)
 	$(CC) $(TARGET_FLAGS) -O2 -g -Wall -c $< -o $@
 # SDL3 / shaderc headers must exist before the runtime is compiled.
-$(RT_OBJ): $(LIB_STAMPS)
+$(filter-out $(RYUSRV_OBJ) $(ENET_OBJ),$(RT_OBJ)): $(LIB_STAMPS)
 
 # (Linux: a program starts with glibc GLIBC_MAX and libstdc++ GLIBCXX_MAX or later, see LDFLAGS; this checks the one
 # just linked. GLIBCXX_MAX: GCC 13's, the oldest of those distributions.)
@@ -295,6 +353,7 @@ $(1):
 	bash tools/fetch-verified.sh "$$@" "$(3)" "$(2)" $(4)
 endef
 $(eval $(call FETCH,$(FFMPEG_TAR),https://ffmpeg.org/releases/ffmpeg-$(FFMPEG_VER).tar.xz,$(FFMPEG_SHA256),https://distfiles.macports.org/ffmpeg/ffmpeg-$(FFMPEG_VER).tar.xz))
+$(eval $(call FETCH,$(ZSTD_TAR),https://github.com/facebook/zstd/releases/download/v$(ZSTD_VER)/zstd-$(ZSTD_VER).tar.gz,$(ZSTD_SHA256)))
 $(eval $(call FETCH,$(SDL3_TAR),https://github.com/libsdl-org/SDL/releases/download/release-$(SDL3_VER)/SDL3-$(SDL3_VER).tar.gz,$(SDL3_SHA256)))
 $(eval $(call FETCH,third_party/shaderc/shaderc-$(SHADERC_VER).tar.gz,https://github.com/google/shaderc/archive/refs/tags/v$(SHADERC_VER).tar.gz,f06ce5bcca94e5df7f34e115743597d0ad2e13c5fe9213c67dc8c76031241947))
 $(eval $(call FETCH,third_party/shaderc/glslang-$(GLSLANG_VER).tar.gz,https://github.com/KhronosGroup/glslang/archive/refs/tags/$(GLSLANG_VER).tar.gz,9c09b901149c729df745057dafa815278aaa101b84d2b6e14f16a42de52f97f2))
@@ -312,6 +371,18 @@ $(FFMPEG_DIR)/.built: $(FFMPEG_TAR)
 	@echo "ffmpeg: FFmpeg $(FFMPEG_VER) (H.264 + AAC in MP4) built in $(FFMPEG_DIR)"
 
 $(FFMPEG_LIBS): $(FFMPEG_DIR)/.built ;
+
+$(ZSTD_DIR)/.built: $(ZSTD_TAR)
+	rm -rf $(ZSTD_DIR) && mkdir -p $(ZSTD_DIR)/src $(ZSTD_DIR)/obj $(ZSTD_DIR)/lib $(ZSTD_DIR)/include
+	tar -xzf $< -C $(ZSTD_DIR)/src --strip-components=1 zstd-$(ZSTD_VER)/lib zstd-$(ZSTD_VER)/LICENSE
+	@cd $(ZSTD_DIR) && for f in src/lib/common/*.c src/lib/compress/*.c src/lib/decompress/*.c; do \
+	    $(CC) $(TARGET_FLAGS) $(ZSTD_FLAGS) -c $$f -o obj/$$(basename $$f .c).o || exit 1; done
+	$(ZSTD_AR) rcs $(ZSTD_DIR)/lib/libzstd.a $(ZSTD_DIR)/obj/*.o
+	cp $(ZSTD_DIR)/src/lib/zstd.h $(ZSTD_DIR)/src/lib/zstd_errors.h $(ZSTD_DIR)/include/
+	touch $@
+	@echo "zstd: zstd $(ZSTD_VER) built in $(ZSTD_DIR)"
+
+$(ZSTD_DIR)/lib/libzstd.a: $(ZSTD_DIR)/.built ;
 
 # the bundled SDL3: configure (checking that it found SDL3_NEED), build, install into $(SDL3_DIR)
 $(SDL3_DIR)/.built: $(SDL3_TAR)
@@ -358,7 +429,8 @@ $(B)/pipelines.list: extras/pipelines.list
 	cp $< $@
 
 LICENSE_TXT = $(B)/licenses/LICENSE.txt $(B)/licenses/THIRD_PARTY_NOTICES.txt $(if $(AV_DEPS),$(B)/licenses/FFmpeg.txt) \
-              $(if $(SDL_DEPS),$(B)/licenses/SDL3.txt) $(if $(SHADERC_DEPS),$(B)/licenses/shaderc.txt)
+              $(if $(SDL_DEPS),$(B)/licenses/SDL3.txt) $(if $(SHADERC_DEPS),$(B)/licenses/shaderc.txt) \
+              $(if $(ZSTD_DEPS),$(B)/licenses/zstd.txt)
 licenses: $(LICENSE_TXT)
 $(B)/licenses/%.txt: %
 	@mkdir -p $(dir $@)
@@ -376,6 +448,11 @@ $(B)/licenses/SDL3.txt: $(SDL3_DIR)/.built
 	@{ echo "This program contains SDL $(SDL3_VER), linked statically, under the zlib license (below). Its source code is"; \
 	   echo "https://github.com/libsdl-org/SDL/releases/download/release-$(SDL3_VER)/SDL3-$(SDL3_VER).tar.gz."; \
 	   echo; cat $(SDL3_DIR)/src/LICENSE.txt; } > $@
+$(B)/licenses/zstd.txt: $(ZSTD_DIR)/.built
+	@mkdir -p $(dir $@)
+	@{ echo "This program contains zstd $(ZSTD_VER), linked statically under the BSD license (below)."; \
+	   echo "Source: https://github.com/facebook/zstd/releases/download/v$(ZSTD_VER)/zstd-$(ZSTD_VER).tar.gz"; \
+	   echo; cat $(ZSTD_DIR)/src/LICENSE; } > $@
 $(B)/licenses/shaderc.txt: $(SHADERC_DIR)/.built
 	@mkdir -p $(dir $@)
 	@{ echo "This program contains shaderc $(SHADERC_VER) with glslang $(GLSLANG_VER), SPIRV-Tools $(SPIRV_VER) and SPIRV-Headers"; \
