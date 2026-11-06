@@ -356,7 +356,7 @@ class ImageTests(unittest.TestCase):
         ):
             result = subprocess.run(
                 ["bash", "-euo", "pipefail", "-c",
-                 'version=$1\n' + block.group(0) +
+                 'version=0\nsource_version=$1\n' + block.group(0) +
                  '\nprintf "%s\\n" "${upstream_tests[@]}"', "-", version],
                 capture_output=True, text=True, check=True,
             )
@@ -367,6 +367,33 @@ class ImageTests(unittest.TestCase):
             script,
         )
         self.assertNotIn("-f tests/test_engine_module.c", script)
+
+    def test_check_mode_reads_pin_even_when_version_argument_is_zero(self):
+        script = (ROOT / "tools/docker/build.sh").read_text()
+        function = re.search(r"read_source_version\(\) \{.*?\n\}", script, re.S)
+        self.assertIsNotNone(function)
+        self.assertIn("source_version=$(read_source_version)", script)
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / ".github/maintenance/upstream-release.tsv"
+            state.parent.mkdir(parents=True)
+            for content, success in (
+                ("schema\t1\nversion\t0.14.3\n", True),
+                ("schema\t1\nversion\t0.14.0\n", True),
+                ("schema\t1\n", False),
+                ("version\tnot-a-version\n", False),
+                ("version\t0.14.0\nversion\t0.14.3\n", False),
+            ):
+                state.write_text(content)
+                result = subprocess.run(
+                    ["bash", "-euo", "pipefail", "-c",
+                     'die() { exit 2; }\n' + function.group(0) +
+                     "\nread_source_version"], cwd=tmp,
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode == 0, success, content)
+                if success:
+                    self.assertEqual(result.stdout.strip(),
+                                     content.split("version\t")[1].strip())
 
     def test_public_tools_directories_are_traversable_after_the_last_copy(self):
         dockerfile = (ROOT / "tools/docker/Dockerfile").read_text()

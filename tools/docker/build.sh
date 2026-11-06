@@ -45,8 +45,21 @@ args=("TARGET_ARCH=aarch64" "B=$build" "O=/work/obj-aarch64"
   "SYSROOT=$sysroot" "TEST_RUNNER=qemu-aarch64 -L $sysroot")
 # The trusted preparation commit still pins 0.14.0. Once the verified source
 # version reaches 0.14.3, missing module/cheat sources must fail, never skip.
+# CI uses --version 0 for runtime checks, so use the tracked source pin instead.
+read_source_version() {
+  local key value pinned=''
+  while IFS=$'\t' read -r key value; do
+    if [[ $key == version ]]; then
+      [[ -z $pinned ]] || die "duplicate source version"
+      pinned=$value
+    fi
+  done < .github/maintenance/upstream-release.tsv
+  [[ $pinned =~ ^[0-9]+(\.[0-9]+)*$ ]] || die "invalid source version"
+  printf '%s\n' "$pinned"
+}
+source_version=$(read_source_version)
 upstream_tests=()
-if printf '%s\n' 0.14.3 "$version" | sort -V -C; then
+if printf '%s\n' 0.14.3 "$source_version" | sort -V -C; then
   upstream_tests=(test-engine-modules test-cheats)
 fi
 if [[ $mode == release ]]; then
