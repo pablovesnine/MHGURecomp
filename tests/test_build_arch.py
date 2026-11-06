@@ -100,6 +100,34 @@ class BuildTests(unittest.TestCase):
         self.assertTrue((ROOT / "updater/updater.h").is_file())
         self.assertTrue((ROOT / "runtime/platform/win_compat.h").is_file())
 
+    def test_engine_modules_and_cheats_cross_compile_and_use_runner(self):
+        result = subprocess.run(
+            ["make", "-n", "example-engine-module", "test-engine-modules",
+             "test-cheats", "HOST_ARCH=x86_64", "SYSROOT=/test/sysroot",
+             "O=/test/objects", "SDL3=system", "SHADERC=system",
+             "TEST_RUNNER=qemu-aarch64 -L /test/sysroot"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        compiles = [line for line in result.stdout.splitlines()
+                    if line.startswith("clang ")]
+        self.assertGreaterEqual(len(compiles), 8)
+        for line in compiles:
+            self.assertIn("--target=aarch64-linux-gnu", line)
+            self.assertIn("--sysroot=/test/sysroot", line)
+            self.assertIn("-fuse-ld=lld", line)
+            self.assertIn("-fsigned-char", line)
+        self.assertIn(
+            "qemu-aarch64 -L /test/sysroot "
+            "/test/objects/engine-module-test/test-engine-module",
+            result.stdout,
+        )
+        self.assertIn(
+            "cd /test/objects/settings-test && "
+            "qemu-aarch64 -L /test/sysroot ./test-cheats", result.stdout,
+        )
+        self.assertNotIn(".dll", result.stdout)
+
     def test_only_shared_hash_remains_and_computes_correct_digest(self):
         self.assertEqual(
             {p.name for p in (ROOT / "updater").iterdir() if p.is_file()},

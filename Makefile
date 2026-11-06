@@ -414,6 +414,44 @@ dist:
 
 .PHONY: all gen test-lift runtime-objs clean data licenses pipelist dist FORCE
 
+# Optional native modules use the same target ABI as the runtime. These targets
+# need the upstream 0.14.3 sources; they never install or enable a player module.
+ENGMOD_CC   := $(CC) $(TARGET_FLAGS) -O2 -Wall -fsigned-char -fPIC -shared -fuse-ld=lld
+ENGMOD_TEST := $(O)/engine-module-test
+ENGMOD_SRC  := extras/example-engine-module/example_engine_module.c
+.PHONY: example-engine-module test-engine-modules test-cheats
+example-engine-module:
+	@mkdir -p $(ENGMOD_TEST)/engine_modules/example
+	$(ENGMOD_CC) $(ENGMOD_SRC) -o $(ENGMOD_TEST)/engine_modules/example/example.so
+	@echo "built $(ENGMOD_TEST)/engine_modules/example: copy the folder to engine_modules/ and add the line 'example' to engine_modules/enabled.txt"
+
+test-engine-modules: $(LIB_STAMPS)
+	@rm -rf $(ENGMOD_TEST)/t && mkdir -p $(ENGMOD_TEST)/t/good $(ENGMOD_TEST)/t/hidden $(ENGMOD_TEST)/t/badapi $(ENGMOD_TEST)/t/noapi $(ENGMOD_TEST)/t/declines $(ENGMOD_TEST)/t/notamodule
+	$(ENGMOD_CC) $(ENGMOD_SRC) -o $(ENGMOD_TEST)/t/good/good.so
+	cp $(ENGMOD_TEST)/t/good/good.so $(ENGMOD_TEST)/t/hidden/hidden.so
+	$(ENGMOD_CC) -DEXAMPLE_API=99 $(ENGMOD_SRC) -o $(ENGMOD_TEST)/t/badapi/badapi.so
+	$(ENGMOD_CC) -DEXAMPLE_NO_API $(ENGMOD_SRC) -o $(ENGMOD_TEST)/t/noapi/noapi.so
+	$(ENGMOD_CC) -DEXAMPLE_DECLINE $(ENGMOD_SRC) -o $(ENGMOD_TEST)/t/declines/declines.so
+	printf 'int unrelated;\n' > $(ENGMOD_TEST)/t/notamodule.c
+	$(ENGMOD_CC) $(ENGMOD_TEST)/t/notamodule.c -o $(ENGMOD_TEST)/t/notamodule/notamodule.so
+	printf '\357\273\277good\n# the loader test\n  badapi  \nnoapi\ndeclines\nnotamodule\nnosuch\n../evil\ngood\n' > $(ENGMOD_TEST)/t/enabled.txt
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(RTFLAGS) tests/test_engine_module.c runtime/engine_module.c runtime/config.c runtime/config_store.c $(SDL_LIBS) -ldl -lm -o $(ENGMOD_TEST)/test-engine-module
+	MHGU_ENGINE_MODULES_DIR=$(ENGMOD_TEST)/t $(TEST_RUNNER) $(ENGMOD_TEST)/test-engine-module > $(ENGMOD_TEST)/t/out.txt 2>&1 || { cat $(ENGMOD_TEST)/t/out.txt; exit 1; }
+	@cat $(ENGMOD_TEST)/t/out.txt
+	@for want in 'good: starting' 'good: loaded (Example' '\[example\] port test-version' 'badapi: built for engine module API 99' \
+	             'noapi: no mhgu_engine_module_api' 'declines: the module declined' 'notamodule: no mhgu_engine_module_api' \
+	             'nosuch: no such folder' '"../evil" is not a folder name' 'engine modules loaded .*: Example' '\[example\] shutdown'; do \
+	    grep -q "$$want" $(ENGMOD_TEST)/t/out.txt || { echo "missing in the log: $$want"; exit 1; }; done
+	@! grep -q 'hidden' $(ENGMOD_TEST)/t/out.txt || { echo "a module enabled.txt does not list was loaded"; exit 1; }
+	@! grep -Eq 'folder .*/(badapi|noapi)' $(ENGMOD_TEST)/t/out.txt || { echo "the entry of a refused module was called"; exit 1; }
+	@test "$$(grep -c 'good: loaded' $(ENGMOD_TEST)/t/out.txt)" = 1 || { echo "good loaded twice"; exit 1; }
+	@echo "test-engine-modules: OK"
+
+test-cheats: $(LIB_STAMPS)
+	@mkdir -p $(O)/settings-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(RTFLAGS) tests/test_cheats.c runtime/cheats.c -lpthread -o $(O)/settings-test/test-cheats
+	cd $(O)/settings-test && $(TEST_RUNNER) ./test-cheats
+
 # Exercise real ImGui navigation without a game dump or graphics device.
 .PHONY: test-settings-panel
 test-settings-panel: $(O)/rt/settings_panel.o $(O)/rt/modorder.o $(O)/rt/arcmerge.o $(O)/rt/config.o $(O)/rt/config_store.o $(O)/imgui/imgui/imgui.o $(O)/imgui/imgui/imgui_draw.o $(O)/imgui/imgui/imgui_tables.o $(O)/imgui/imgui/imgui_widgets.o $(LIB_STAMPS)

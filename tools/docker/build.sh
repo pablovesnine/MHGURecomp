@@ -43,6 +43,12 @@ pilot() {
 args=("TARGET_ARCH=aarch64" "B=$build" "O=/work/obj-aarch64"
   "GEN=/work/generated" "GAME=/game" "VERSION=$version" "JOBS=$jobs"
   "SYSROOT=$sysroot" "TEST_RUNNER=qemu-aarch64 -L $sysroot")
+# The trusted preparation commit still pins 0.14.0. Once the verified source
+# version reaches 0.14.3, missing module/cheat sources must fail, never skip.
+upstream_tests=()
+if printf '%s\n' 0.14.3 "$version" | sort -V -C; then
+  upstream_tests=(test-engine-modules test-cheats)
+fi
 if [[ $mode == release ]]; then
   [[ -r /game/exefs/main && -r /game/exefs/sdk && -d /game/romfs ]] \
     || die "dump is unreadable in Docker; check ownership, ACLs and SELinux"
@@ -64,7 +70,13 @@ python3 /opt/mhgu/docker/check-elf.py aarch64 "${programs[@]}"
 if [[ $mode == check ]]; then
   # All public checks are required, including actual menu navigation.
   make -j"$jobs" "${args[@]}" test-settings test-settings-locale \
-    test-linux-fault test-settings-panel test-arm64-abi test-arcmerge
+    test-linux-fault test-settings-panel test-arm64-abi test-arcmerge "${upstream_tests[@]}"
+  if ((${#upstream_tests[@]})); then
+    python3 /opt/mhgu/docker/check-elf.py aarch64 \
+      /work/obj-aarch64/engine-module-test/test-engine-module \
+      /work/obj-aarch64/settings-test/test-cheats \
+      "/work/obj-aarch64/engine-module-test/t/"{good,hidden,badapi,noapi,declines,notamodule}/*.so
+  fi
   python3 tests/test_build_arch.py
   python3 tests/test_linux_release.py
   exit 0

@@ -33,6 +33,7 @@
     "files": [
       "LICENSE", "THIRD_PARTY_NOTICES", "extras/pipelines.list", "updater/sha256.c",
       "extras/icon/mhgurecomp-128.png",
+      "extras/example-engine-module/example_engine_module.c",
       "tools/disasm.py", "tools/gamelib_entry.c", "tools/gen.py", "tools/hle_list.py",
       "tools/imgui_thunks.py", "tools/lifter.py", "tools/mtarc.py", "tools/neon.py",
       "tools/nso.py", "tools/requirements.txt", "tools/retool.py", "tools/samples.py",

@@ -20,21 +20,22 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 - Optional village quests in multiplayer (press L/R at the quest counter), with adjusted monster HP
 - Mod overlays, archive merging, exefs patches and Forge plugins, with mod-dependent compatibility (see [Mods](#mods))
 - Cheat codes in the same format as Ryujinx and Atmosphère, in the `cheats` folder (see [Cheats](#cheats))
+- Optional native engine modules in upstream 0.14.3, separate from game mods and Forge plugins (see [Engine modules](docs/ENGINE-MODULES.md))
 - In-game PC Settings menu overlay (F1 or `Plus`+`Minus` to open)
 - Internet hubs through the default or a custom compatible server, plus LAN/direct play (use "Local Wireless")
 - Discord Rich Presence (optional)
 
 ## Download
 
-I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.13.1). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
+I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.14.0). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
 
-The source now includes upstream **0.14.0**. The downloadable package remains **0.13.1** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+The source transition targets upstream **0.14.3**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; the 0.14.3 behavior described below requires that source version. The downloadable package remains **0.14.0** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
 
 Your device needs an ARM64 Linux userspace, glibc 2.39 or newer, a compatible C++ runtime and a desktop session. It also needs the Vulkan features required by the renderer, not just a matching version number. See [device requirements](docs/BUILD-LINUX-ARM64.md).
 
 ## Screenshots
 
-I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0 or predict performance on other devices.
+I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0 or 0.14.3, or predict performance on other devices.
 
 ![MHGU gameplay on AYN Odin 3](docs/screenshots/ayn-odin3-gameplay.jpg) ![Online multiplayer lobby list](docs/screenshots/ayn-odin3-online.jpg) ![morerokk's custom settings menu](docs/screenshots/ayn-odin3-menu.jpg)
 
@@ -44,7 +45,7 @@ Settings live in `mhgurecomp.ini`, with explanations in the file. To change them
 
 - `[Display]`: `Mode` (Borderless / Fullscreen / Windowed), `Resolution`, `RenderResolution` (the 3D resolution), `AspectRatio` (16:10 and wider fill the window, while narrower windows have bars), `FOV` (1.0 = the game's), `UIAnchor` (Center, 21:9, 32:9 or Edges)
 - `[Anti-aliasing]`: `MSAA` (Off / 2x / 4x / 8x), `FXAA` (On / Off), `FXAAMode` (Original by default, or 3_11 for FXAA 3.11 in place of GU's FXAA and sharper textures)
-- `[Upscaler]`: FSR 3.1 temporal upscaling, default Off, with NativeAA / Quality / Balanced / Performance / UltraPerformance modes, sharpness and motion/reactive controls. These settings need a restart. FSR replaces MSAA and FXAA and needs additional GPU capabilities. It does not generate frames. See [FSR](docs/SETTINGS_UI.md#fsr).
+- `[Upscaler]`: FSR 3.1 temporal upscaling, default Off, with NativeAA / Quality / Balanced / Performance / UltraPerformance modes, sharpness and motion/reactive controls. In 0.14.3, sharpness and reactive mask apply on Save; enable, quality, object motion and animated surfaces still need a restart. FSR replaces MSAA and FXAA and needs additional GPU capabilities. It does not generate frames. See [FSR](docs/SETTINGS_UI.md#fsr).
 - `[Graphics]`: `DrawDistance` (how far away people in villages and Hubs remain visible: 1 = the game's, 2 = twice as far, 0.5 = half, 0 = no limit, up to 10)
 - `[Performance]`: `FPS` (30 to 240), `VSync`, `ShowFPS` and `ShaderPrewarm`. Preparing shaders and pipelines in the background reduces missing draws and stutter on first use. Other combinations are prepared as needed. The supplied `pipelines.list` covers common areas with MSAA Off. Preparation time and cache size depend on your hardware, driver and settings.
 - `[Controls]`: `FaceButtons` (Position / Label), `MenuConfirm` (host settings confirmations only), `BackgroundInput` and `ComboInputWindow` (Lenient / Strict). In-game confirmation buttons are not remapped by `MenuConfirm`. See [host confirmation](docs/SETTINGS_UI.md#host-confirmation-button).
@@ -71,6 +72,8 @@ Choose **Local Wireless** in the game. The client uses IP networking instead of 
 **You can use a custom server.** Open **Network > Hub server**, or set `[Multiplayer] Server` in `mhgurecomp.ini`. Leave it empty for morerokk's default public hub, use `Off` to disable it, or enter `hostname[:port]` for a compatible custom hub (default hub port **39510**). Use **Matchmaking key** to separate your group's listings and **Check hub server** to check the draft address/key. Save before searching or joining. Neither setting needs a restart, but everyone who wants the same internet listings needs the same server and key.
 
 The hub relays internet connections, so players do not need to forward game ports. For direct play, **Search hosts** / `Join` accepts host addresses, and **Host port** / `Port` defaults to **39500 TCP/UDP**. Direct internet play without a hub needs that host port to be reachable. If the hub is unreachable, LAN discovery and the direct hosts you configured remain available.
+
+Upstream **0.14.3 uses protocol 3** and cannot share hubs with earlier recomp releases. Everyone in a session needs a compatible client. The Linux ARM64 fork keeps upstream's desktop public matchmaking behavior. In 0.14.3, saving Port or Join affects the next host/search operation, not an already active hub.
 
 I do not include a dedicated hub server or its executable in this fork or package. You can connect to a custom hub without those files. See [custom hub configuration and separate server hosting](docs/SETTINGS_UI.md#custom-hub-server) for an INI example, restart rules and upstream hosting instructions.
 
@@ -108,7 +111,7 @@ Put `.txt` files with MHGU **1.4.0** cheat codes in `cheats/`. The interpreter s
 ```
 
 - Turn cheats on and off in the **Cheats** tab, then Save. Your selection is stored in `cheats/_off.txt`. Turning a code off undoes its code patches, but not values it already changed in the save. Master codes (`{Name}`) stay active.
-- New files in `cheats/` require a restart. **Add a cheat** writes to `cheats/added.txt` and applies immediately. Online, use cheats only when everyone in the lobby agrees.
+- In 0.14.3, close and reopen the settings menu to rescan files added, changed or removed in `cheats/`, then Save your selection. Earlier packages need a restart for new files. **Add a cheat** writes to `cheats/added.txt` and applies immediately. Online, use cheats only when everyone in the lobby agrees.
 - To turn off a file without deleting it, start its name with `_`.
 - Cheats that patch game code can route affected functions through the interpreter and reduce performance.
 - Diagnostics in `log.txt` or the terminal list loaded cheats and files that could not be read.

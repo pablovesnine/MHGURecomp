@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import shlex
 import subprocess
@@ -343,6 +344,30 @@ class InterfaceTests(unittest.TestCase):
 
 
 class ImageTests(unittest.TestCase):
+    def test_new_upstream_checks_are_version_gated_not_file_gated(self):
+        script = (ROOT / "tools/docker/build.sh").read_text()
+        block = re.search(r"upstream_tests=\(\)\n(.*?)\nfi", script, re.S)
+        self.assertIsNotNone(block)
+        for version, expected in (
+            ("0.14.0", ""), ("0.14.2", ""),
+            ("0.14.3", "test-engine-modules\ntest-cheats"),
+            ("0.14.10", "test-engine-modules\ntest-cheats"),
+            ("0.15.0", "test-engine-modules\ntest-cheats"),
+        ):
+            result = subprocess.run(
+                ["bash", "-euo", "pipefail", "-c",
+                 'version=$1\n' + block.group(0) +
+                 '\nprintf "%s\\n" "${upstream_tests[@]}"', "-", version],
+                capture_output=True, text=True, check=True,
+            )
+            self.assertEqual(result.stdout.strip(), expected, version)
+        self.assertIn('test-arcmerge "${upstream_tests[@]}"', script)
+        self.assertIn(
+            'engine-module-test/t/"{good,hidden,badapi,noapi,declines,notamodule}',
+            script,
+        )
+        self.assertNotIn("-f tests/test_engine_module.c", script)
+
     def test_public_tools_directories_are_traversable_after_the_last_copy(self):
         dockerfile = (ROOT / "tools/docker/Dockerfile").read_text()
         last_copy = dockerfile.rindex("\nCOPY ")

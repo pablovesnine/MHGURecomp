@@ -292,6 +292,27 @@ class SyncTests(unittest.TestCase):
             self.worker.prepare()
         self.assertFalse((self.repo / ".git/MERGE_HEAD").exists())
 
+    def test_real_policy_imports_reviewed_example_but_blocks_sibling(self):
+        policy = json.loads((SCRIPT.parent / "fork-policy.json").read_text())
+        policy["shared"]["files"] += ["common", "fork", "upstream", "human"]
+        self.commit(sync.POLICY, json.dumps(policy))
+        self.git(self.writer, "push", "origin", "master")
+        self.git(self.writer, "reset", "--hard", "HEAD~1")
+        path = "extras/example-engine-module/example_engine_module.c"
+        self.commit(path, "/* public loader test fixture */\n")
+        self.publish()
+        self.worker.refresh()
+        result = self.candidate()
+        self.assertEqual(self.git(self.repo, "show", result["sha"] + ":" + path),
+                         "/* public loader test fixture */")
+        self.worker.promote(result["sha"], result["base"], result["upstream"],
+                            result["policy"])
+        self.commit("extras/example-engine-module/unreviewed.c", "review first")
+        self.publish()
+        self.worker.refresh()
+        with self.assertRaisesRegex(sync.Intervention, "Unclassified"):
+            self.worker.prepare()
+
     def test_unknown_new_bat_still_requires_policy_review(self):
         self.commit("new-launcher.bat", "unreviewed platform entry point\n")
         self.publish()

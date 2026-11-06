@@ -252,6 +252,18 @@ class WorkflowTests(unittest.TestCase):
         policy["keep"]["files"].append("README.es.md")
         self.assertEqual(sync.classify(policy, "README.es.md"), "keep")
 
+    def test_only_reviewed_engine_example_is_shared(self):
+        policy = sync.validate_policy(json.loads(
+            (ROOT / ".github/maintenance/fork-policy.json").read_text()))
+        self.assertEqual(sync.classify(
+            policy, "extras/example-engine-module/example_engine_module.c"),
+            "shared")
+        for path in ("extras/example-engine-module/other.c",
+                     "extras/example-engine-module/example_engine_module.so",
+                     "extras/example-engine-module/example_engine_module.dll",
+                     "extras/other-module/code.c"):
+            self.assertIsNone(sync.classify(policy, path), path)
+
     def test_dependabot_remains_monthly(self):
         text = (ROOT / ".github/dependabot.yml").read_text()
         self.assertEqual(text.count("interval: monthly"), 2)

@@ -12,7 +12,7 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = (
     "README.md", "docs/BUILD-LINUX-ARM64.md",
-    "docs/MAINTAINING.md", "docs/SETTINGS_UI.md",
+    "docs/MAINTAINING.md", "docs/SETTINGS_UI.md", "docs/ENGINE-MODULES.md",
 )
 
 
@@ -149,11 +149,16 @@ class ForkDocumentationTests(unittest.TestCase):
         menu = (ROOT / "runtime/settings_panel.cpp").read_text()
         network = (ROOT / "runtime/net/ldn.c").read_text()
         guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
+        # The preparation commit keeps the old pin until the candidate passes.
+        state = dict(line.split("\t", 1) for line in
+                     (ROOT / ".github/maintenance/upstream-release.tsv")
+                     .read_text().splitlines())
+        live_network = tuple(map(int, state["version"].split("."))) >= (0, 14, 3)
         for key, label, restart in (
             ("Server", "Hub server", "false"),
             ("Key", "Matchmaking key", "false"),
-            ("Join", "Search hosts", "true"),
-            ("Port", "Host port (TCP / UDP)", "true"),
+            ("Join", "Search hosts", "false" if live_network else "true"),
+            ("Port", "Host port (TCP / UDP)", "false" if live_network else "true"),
         ):
             with self.subTest(key=key):
                 self.assertRegex(
@@ -185,7 +190,19 @@ class ForkDocumentationTests(unittest.TestCase):
         self.assertIn("not include a dedicated hub server", readme)
         self.assertIn(
             "https://github.com/morerokk/MHGURecomp/tree/"
-            "b3746e800b7435dee696e44b84b054a642f600df/server", guide)
+            "851a0a5fbe70249fdace7e79d974fbde5e88892d/server", guide)
+
+    def test_0143_module_and_live_setting_boundaries(self):
+        guide = (ROOT / "docs/ENGINE-MODULES.md").read_text()
+        settings = (ROOT / "docs/SETTINGS_UI.md").read_text()
+        for phrase in ("not a sandbox", "constructors", "enabled.txt",
+                       "AArch64", "not include or enable"):
+            self.assertIn(phrase, guide)
+        self.assertNotIn("before any code", guide)
+        self.assertIn("protocol 3", settings)
+        self.assertIn("Sharpness and reactive mask apply on Save", settings)
+        self.assertIn("close and reopen", settings)
+        self.assertNotIn("All six need a restart", settings)
 
     def test_readme_distinguishes_features_from_unshipped_resources(self):
         readme = (ROOT / "README.md").read_text()
