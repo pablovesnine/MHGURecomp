@@ -380,7 +380,8 @@ class ImageTests(unittest.TestCase):
             ("0.14.10", "test-engine-modules\ntest-cheats"),
             ("0.15.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub"),
             ("0.15.1", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins"),
-            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins"),
+            ("0.15.2", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout"),
+            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout"),
         ):
             result = subprocess.run(
                 ["bash", "-euo", "pipefail", "-c",
@@ -394,8 +395,14 @@ class ImageTests(unittest.TestCase):
                 result.stderr.strip(),
                 ("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU\n"
                  "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU "
+                 "-DMHGU_TEST_MOUSE_CAPTURE\n"
+                 "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU "
+                 "-DMHGU_TEST_MOUSE_CAPTURE -DMHGU_TEST_TEXT_HDR")
+                if version in ("0.15.2", "0.16.0") else
+                ("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU\n"
+                 "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU "
                  "-DMHGU_TEST_MOUSE_CAPTURE")
-                if version in ("0.15.1", "0.16.0") else
+                if version == "0.15.1" else
                 "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU"
                 if version == "0.15.0" else "", version,
             )

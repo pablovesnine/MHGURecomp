@@ -78,7 +78,19 @@ While FSR is running, MSAA stays at 1 (off) and FXAA stays off. This also applie
 
 Upstream 0.15.0 adds `[Performance] LoadingIndicator = On` for startup and shader-preparation feedback. It is INI-only, not a settings-panel row. Close the game before editing it, then restart for the change to apply. Set it to Off to disable the indicator. I have not validated startup rendering, FXAA output or GPU timings on the ARM64 device for this version.
 
+In 0.15.2 the indicator also reports mod-file scanning and application. Archive comparisons can run in parallel; mods still layer in their configured order. I have not measured first-start speed on the device.
+
 Village quests started from the Hub or Hunters' Pub can receive up to three extra Map items in the last empty supply-box slots in 0.15.0. Reserved delayed-delivery slots stay untouched. This does not validate real quest transitions, repeated game calls or multiplayer behavior on a device.
+
+## Text and HDR
+
+From 0.15.2, **Graphics & Audio** includes **Fix kerning** and **Bold text**. They apply on Save. Linux defaults are `FixKerning = On` and `BoldText = Off` in `[Graphics]`. If a font mod looks wrong, try **Fix kerning Off / Bold text On** to restore the game's placement and weight. Metrics are loaded once from the installed font, so restart after changing a font mod.
+
+**HDR** is optional and defaults to Off. Enable HDR in the operating system/compositor first; the Vulkan surface must advertise an HDR10 or scRGB format. Auto prefers HDR10 and falls back to scRGB, or SDR if neither is offered. The renderer can also fall back to SDR if it cannot allocate the HDR composition image. Check the `[hdr]` log; the toggle alone does not prove HDR output.
+
+Disable FSR and restart before trying HDR if FSR is running. The HDR startup path disables FSR, and Smooth gradients is not used with HDR. The panel exposes peak/game/UI brightness, gamma, exposure, colour grading, bloom and analysis; normal HDR settings are live, but the panel marks HDR as requiring a restart while FSR is running. I do not treat switching between the two during a session as validated.
+
+`[HDR] UnclampedScene = On` and `HDRFormat = Auto` are INI-only. Close the game before editing them and restart. Use your display's measured/specification peak rather than assuming the default 1000 nits fits it. I have not tested HDR presentation, colour accuracy, analysis overlays or GPU compatibility on ARM64 hardware. Public font/archive fixtures do not validate game typography or rendering.
 
 ## Custom hub server
 

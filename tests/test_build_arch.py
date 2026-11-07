@@ -52,6 +52,25 @@ def load_dist():
 
 
 class BuildTests(unittest.TestCase):
+    def test_0152_text_dependencies_and_public_checks_are_required(self):
+        recipe = "probe:\n\t@printf '%s\\n' '$(LDFLAGS)'\n"
+        result = subprocess.run(
+            ["make", "-s", "-f", "Makefile", "-f", "-", "probe",
+             "SYSROOT=/test/sysroot", "SDL3=system", "SHADERC=system",
+             "ZSTD=system"],
+            input=recipe, cwd=ROOT, capture_output=True, text=True, check=True)
+        self.assertIn("-lz", shlex.split(result.stdout))
+        for path in ("tools/docker/Dockerfile", "tools/docker/prepare-sysroot.sh"):
+            self.assertIn("zlib1g-dev", (ROOT / path).read_text())
+        makefile = (ROOT / "Makefile").read_text()
+        self.assertIn("tests/frame_counter_fixture.c", makefile)
+        self.assertIn("test-textlayout:", makefile)
+        self.assertIn("$(TEST_RUNNER) $(O)/textlayout-test/test-textlayout", makefile)
+        entry = (ROOT / "tools/docker/build.sh").read_text()
+        self.assertIn("0.15.2", entry)
+        self.assertIn("upstream_tests+=(test-textlayout)", entry)
+        self.assertIn("/work/obj-aarch64/textlayout-test/test-textlayout", entry)
+
     def test_0151_cpu_metadata_has_no_x86_requirement_on_arm64(self):
         state = dict(line.split("\t", 1) for line in
                      (ROOT / ".github/maintenance/upstream-release.tsv")

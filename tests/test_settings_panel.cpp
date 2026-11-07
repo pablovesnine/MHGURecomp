@@ -18,6 +18,7 @@
 #include <string>
 static int requested;
 extern "C" const char *g_game_dir = "obj/settings-test/game";  // (modorder.c compares archives with the game's)
+extern "C" volatile uint64_t g_present_count = 0;  // config.c model previews; no renderer in this fixture
 extern "C" void ui_request_action(bool restart) { requested = restart ? 2 : 1; }
 extern "C" bool ui_action_failed(void) { return false; }
 static int import_requested;
@@ -663,6 +664,14 @@ int main() {
     press(ImGuiKey_GamepadL1);
     selected("volume");
     down(11);  // (mutebg, show.fps, fps, vsync, prewarm, msaa, fxaa, fxaamode, drawdist, smooth, fsr)
+#ifdef MHGU_TEST_TEXT_HDR
+    selected("kerning");
+    confirm();
+    down();
+    selected("boldtext");
+    confirm();
+    down();
+#endif
     selected("fsr");
     confirm();
     assert(settings_panel_dirty());
@@ -675,6 +684,12 @@ int main() {
     confirm();
     assert(config_editable().fsr == 1);
     assert(config_editable().fsr_quality == FSR_QUALITY);
+#ifdef MHGU_TEST_TEXT_HDR
+    assert(config_editable().fix_kerning == 0);
+    assert(config_live_fix_kerning() == 0);
+    assert(config_editable().bold_text == 1);
+    assert(config_live_bold_text() == 1);
+#endif
     Config fsr_saved = config_editable();
     assert(config_restart_required(&fsr_saved));
     opened = false;

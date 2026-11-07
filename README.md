@@ -29,17 +29,19 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 
 I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.14.3). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
 
-The source transition targets upstream **0.15.1**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; behavior added in 0.15.0 or 0.15.1 requires the corresponding source version. The downloadable package remains **0.14.3** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+The source transition targets upstream **0.15.2**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; newer behavior requires the corresponding source version. The downloadable package remains **0.14.3** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
 
 Upstream 0.15.0 changes FXAA shaders and the mod interpreter, adds an optional loading/shader indicator and controller access to Forge, adjusts controller rumble updates, and adds up to three extra supply maps to Village quests started from the Hub or Pub. I have not measured its performance or tested those changes on an ARM64 GPU or physical controller. Upstream speedup figures are not measured results for this fork.
 
 Upstream 0.15.1 adds experimental emulator crossplay, optional embedded servers, Mouse4/Mouse5 capture over the keybind dialog, and a smithy-preview adjustment. I keep the new network endpoints disabled by default. The server access controls and connection lifecycle have known limitations; I do not recommend public Internet exposure or treat passphrases as a security boundary. See [experimental crossplay](docs/SETTINGS_UI.md#experimental-emulator-crossplay). Public transport fixtures are not a real emulator, game or device test.
 
+Upstream 0.15.2 adds text spacing and weight controls, parallel mod-archive checks with loading progress, optional HDR output, more 16:10 preview adjustments and a mouse API for mods. I keep HDR off by default. Font mods can need **Fix kerning Off / Bold text On**. I have not tested HDR output or these rendering changes on the device; see [text and HDR](docs/SETTINGS_UI.md#text-and-hdr).
+
 Your device needs an ARM64 Linux userspace, glibc 2.39 or newer, a compatible C++ runtime and a desktop session. It also needs the Vulkan features required by the renderer, not just a matching version number. See [device requirements](docs/BUILD-LINUX-ARM64.md).
 
 ## Screenshots
 
-I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3, 0.15.0 or 0.15.1, or predict performance on other devices.
+I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3, 0.15.0, 0.15.1 or 0.15.2, or predict performance on other devices.
 
 ![MHGU gameplay on AYN Odin 3](docs/screenshots/ayn-odin3-gameplay.jpg) ![Online multiplayer lobby list](docs/screenshots/ayn-odin3-online.jpg) ![morerokk's custom settings menu](docs/screenshots/ayn-odin3-menu.jpg)
 
@@ -51,6 +53,7 @@ Settings live in `mhgurecomp.ini`, with explanations in the file. To change them
 - `[Anti-aliasing]`: `MSAA` (Off / 2x / 4x / 8x), `FXAA` (On / Off), `FXAAMode` (Original by default, or 3_11 for FXAA 3.11 in place of GU's FXAA and sharper textures)
 - `[Upscaler]`: FSR 3.1 temporal upscaling, default Off, with NativeAA / Quality / Balanced / Performance / UltraPerformance modes, sharpness and motion/reactive controls. In 0.14.3, sharpness and reactive mask apply on Save; enable, quality, object motion and animated surfaces still need a restart. FSR replaces MSAA and FXAA and needs additional GPU capabilities. It does not generate frames. See [FSR](docs/SETTINGS_UI.md#fsr).
 - `[Graphics]`: `DrawDistance` (how far away people in villages and Hubs remain visible: 1 = the game's, 2 = twice as far, 0.5 = half, 0 = no limit, up to 10)
+- From 0.15.2, `[Graphics]` also has `FixKerning` (default On) and `BoldText` (default Off on Linux), applied on Save. `[HDR] HDR` defaults to Off and needs an HDR-capable display, compositor and Vulkan surface. I have not validated HDR on a device.
 - `[Performance]`: `FPS` (30 to 240), `VSync`, `ShowFPS` and `ShaderPrewarm`. Preparing shaders and pipelines in the background reduces missing draws and stutter on first use. Other combinations are prepared as needed. The supplied `pipelines.list` covers common areas with MSAA Off. Preparation time and cache size depend on your hardware, driver and settings. In 0.15.0, `LoadingIndicator` defaults to On; it is INI-only and needs a restart. See [loading indicator](docs/SETTINGS_UI.md#loading-indicator).
 - `[Controls]`: `FaceButtons` (Position / Label), `MenuConfirm` (host settings confirmations only), `BackgroundInput` and `ComboInputWindow` (Lenient / Strict). In-game confirmation buttons are not remapped by `MenuConfirm`. See [host confirmation](docs/SETTINGS_UI.md#host-confirmation-button).
 - `[Mouse]`: `MouseSensitivity` (1 = default, 0.1 to 10)

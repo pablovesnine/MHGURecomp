@@ -25,13 +25,23 @@ def build_values(*arguments):
 class Arm64AbiTests(unittest.TestCase):
     def test_linux_defaults_and_launcher_exclude_retired_products(self):
         source = (ROOT / "runtime/config.c").read_text()
-        declaration = source.split("static const char DEFAULT_INI[] =", 1)[1]
+        prefix, declaration = source.split("static const char DEFAULT_INI[] =", 1)
+        # Keep actual platform-conditioned defaults, including multiline macros.
+        # Headers and unrelated C definitions are not part of this isolated fixture.
+        directives = []
+        continued = False
+        for line in prefix.splitlines():
+            if continued or (line.startswith("#") and
+                             not line.startswith("#include")):
+                directives.append(line)
+                continued = line.endswith("\\")
         declaration = declaration.split("\nvoid config_path(", 1)[0]
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / "default-ini"
             subprocess.run(
                 ["clang", "-x", "c", "-o", str(executable), "-"],
-                input="#include <stdio.h>\nconst char ini[] =" + declaration +
+                input="#include <stdio.h>\n" + "\n".join(directives) +
+                      "\nconst char ini[] =" + declaration +
                       "\nint main(void) { fputs(ini, stdout); }\n",
                 text=True, capture_output=True, check=True,
             )
@@ -40,6 +50,11 @@ class Arm64AbiTests(unittest.TestCase):
                         "mhgurecomp-updater"):
             self.assertNotIn(residue, ini)
         self.assertIn("ignored", ini.lower())
+        if "BOLD_TEXT_DEFAULT_INI" in source:
+            self.assertIn("BoldText = Off\n", ini)
+            self.assertIn("FixKerning = On\n", ini)
+            self.assertIn("[HDR]\n", ini)
+            self.assertIn("HDR = Off\n", ini)
         panel = (ROOT / "runtime/settings_panel.cpp").read_text()
         self.assertNotIn('add_choice(r, "updates"', panel)
         launcher = (ROOT / "runtime/ui.c").read_text().split(

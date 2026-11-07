@@ -129,7 +129,7 @@ FFMPEG_CONF += --enable-pic
 # (--exclude-libs: the static libraries linked in - SDL3, shaderc with glslang, FFmpeg - stay inside; only the runtime's
 # own functions are exported, for the game code library. A Vulkan layer or overlay with its own glslang or SDL then
 # doesn't bind to ours, as happened with ImGui: see IMGUIFLAGS.)
-LDFLAGS  := -fuse-ld=lld -rdynamic -Wl,--exclude-libs,ALL $(SDL_LIBS) $(AV_LIBS) -lvulkan $(SHADERC_LIBS) $(ZSTD_LIBS) -lpthread -ldl -lm
+LDFLAGS  := -fuse-ld=lld -rdynamic -Wl,--exclude-libs,ALL $(SDL_LIBS) $(AV_LIBS) -lvulkan $(SHADERC_LIBS) $(ZSTD_LIBS) -lz -lpthread -ldl -lm
 # The programs start with glibc GLIBC_MAX or later (Ubuntu 24.04, Linux Mint 22, Debian 13, SteamOS): calls to the
 # functions newer glibc versions gave a new symbol version go to the old one (runtime/platform/linux_glibc.c), and the
 # link checks that nothing newer is left.
@@ -536,7 +536,7 @@ test-engine-modules: $(LIB_STAMPS)
 	printf 'int unrelated;\n' > $(ENGMOD_TEST)/t/notamodule.c
 	$(ENGMOD_CC) $(ENGMOD_TEST)/t/notamodule.c -o $(ENGMOD_TEST)/t/notamodule/notamodule.so
 	printf '\357\273\277good\n# the loader test\n  badapi  \nnoapi\ndeclines\nnotamodule\nnosuch\n../evil\ngood\n' > $(ENGMOD_TEST)/t/enabled.txt
-	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(RTFLAGS) tests/test_engine_module.c runtime/engine_module.c runtime/config.c runtime/config_store.c $(SDL_LIBS) -ldl -lm -o $(ENGMOD_TEST)/test-engine-module
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(RTFLAGS) tests/test_engine_module.c tests/frame_counter_fixture.c runtime/engine_module.c runtime/config.c runtime/config_store.c $(SDL_LIBS) -ldl -lm -o $(ENGMOD_TEST)/test-engine-module
 	MHGU_ENGINE_MODULES_DIR=$(ENGMOD_TEST)/t $(TEST_RUNNER) $(ENGMOD_TEST)/test-engine-module > $(ENGMOD_TEST)/t/out.txt 2>&1 || { cat $(ENGMOD_TEST)/t/out.txt; exit 1; }
 	@cat $(ENGMOD_TEST)/t/out.txt
 	@for want in 'good: starting' 'good: loaded (Example' '\[example\] port test-version' 'badapi: built for engine module API 99' \
@@ -559,6 +559,13 @@ test-settings-panel: $(O)/rt/settings_panel.o $(O)/rt/modorder.o $(O)/rt/arcmerg
 	@mkdir -p $(O)/settings-test
 	$(CXX) $(TARGET_FLAGS) -fuse-ld=lld $(IMGUIFLAGS) $(PANEL_TEST_FLAGS) -Iruntime tests/test_settings_panel.cpp $(filter %.o,$^) $(SDL_LIBS) -o $(O)/settings-test/test-settings-panel
 	$(TEST_RUNNER) $(O)/settings-test/test-settings-panel
+
+# Production font helpers with synthetic inputs; no game files or GPU required.
+.PHONY: test-textlayout
+test-textlayout:
+	@mkdir -p $(O)/textlayout-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld -std=gnu11 -O1 -g -fsigned-char -fno-strict-aliasing -ffunction-sections -fdata-sections -Wl,--gc-sections -Iruntime tests/test_textlayout.c -lz -lm -pthread -o $(O)/textlayout-test/test-textlayout
+	$(TEST_RUNNER) $(O)/textlayout-test/test-textlayout
 
 # Translation coverage for both host-menu languages; no game files required.
 .PHONY: test-settings-locale

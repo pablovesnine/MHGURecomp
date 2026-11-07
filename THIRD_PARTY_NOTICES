@@ -22,7 +22,10 @@ below.
   with where the source is, in build/licenses/FFmpeg.txt.
 
 Libraries the program uses that are not part of this repository (SDL3,
-shaderc and the Vulkan loader) keep their own licenses. The build collects
+shaderc, system zlib and the Vulkan loader) keep their own licenses. zlib
+(https://zlib.net/, Jean-loup Gailly and Mark Adler, zlib license) is linked
+dynamically for text-layout archive decompression; I do not ship its library.
+The build collects
 licenses for bundled dependencies in build/licenses. The Vulkan loader is
 provided by the device's graphics stack and is not shipped.
 
