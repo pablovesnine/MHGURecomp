@@ -153,6 +153,19 @@ class SourceFetchTests(unittest.TestCase):
             "ZSTD_SHA256   := eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3",
             source)
 
+    def test_sdl_has_an_explicit_same_hash_official_asset_fallback(self):
+        source = (ROOT / "Makefile").read_text()
+        recipe = next(line for line in source.splitlines()
+                      if line.startswith("$(eval $(call FETCH,$(SDL3_TAR),"))
+        self.assertIn("https://github.com/libsdl-org/SDL/releases/download/", recipe)
+        self.assertIn("$(SDL3_SHA256)", recipe)
+        self.assertIn(
+            "https://api.github.com/repos/libsdl-org/SDL/releases/assets/606657293",
+            recipe)
+        self.assertIn(
+            "SDL3_SHA256   := 9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3",
+            source)
+
     def test_makefile_uses_checked_downloader_and_explicit_ffmpeg_mirror(self):
         source = (ROOT / "Makefile").read_text()
         self.assertIn("bash tools/fetch-verified.sh", source)
