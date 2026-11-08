@@ -15,11 +15,17 @@ mkdir -p "$(dirname "$output")"
 partial=$(mktemp "$output.part.XXXXXX")
 trap 'rm -f -- "$partial"' EXIT
 for url in "$@"; do
+  headers=()
+  asset_api='^https://api\.github\.com/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/assets/[0-9]+$'
+  if [[ $url =~ $asset_api ]]; then
+    # The public asset API returns metadata unless binary content is requested.
+    headers=(--header 'Accept: application/octet-stream')
+  fi
   if curl --fail --location --silent --show-error \
       --proto '=https' --proto-redir '=https' \
       --connect-timeout 10 --max-time 120 --retry 1 --retry-all-errors \
       --retry-max-time 45 --speed-limit 1024 --speed-time 30 \
-      --output "$partial" "$url"; then
+      "${headers[@]}" --output "$partial" "$url"; then
     printf '%s  %s\n' "$digest" "$partial" | sha256sum --check --status - \
       || die "source checksum mismatch, refusing all mirrors"
     mv -- "$partial" "$output"

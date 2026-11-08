@@ -90,6 +90,69 @@ class SourceFetchTests(unittest.TestCase):
             self.assertIsNone(content)
             self.assertEqual(leftovers, [])
 
+    def test_official_asset_api_fallback_requests_binary_without_credentials(self):
+        api = "https://api.github.com/repos/example/project/releases/assets/123"
+        result, records, content, leftovers = self.invoke(
+            "fallback", urls=("https://primary.test/source", api))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(content, PAYLOAD)
+        self.assertEqual(len(records), 2)
+        self.assertNotIn("--header", records[0])
+        self.assertIn(api, records[1])
+        self.assertIn("--header", records[1])
+        header = records[1][records[1].index("--header") + 1]
+        self.assertEqual(header, "Accept: application/octet-stream")
+        self.assertNotIn("Authorization", " ".join(records[1]))
+        self.assertEqual(leftovers, [])
+
+    def test_asset_api_header_is_not_sent_to_other_hosts_or_routes(self):
+        for url in (
+            "https://api.github.com.evil.test/repos/a/b/releases/assets/123",
+            "https://mirror.test/repos/a/b/releases/assets/123",
+            "https://api.github.com/repos/a/b/releases/tags/v1",
+        ):
+            with self.subTest(url=url):
+                result, records, content, leftovers = self.invoke("ok", urls=(url,))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("--header", records[0])
+                self.assertEqual(content, PAYLOAD)
+                self.assertEqual(leftovers, [])
+
+    def test_corrupt_asset_api_response_never_uses_another_route(self):
+        api = "https://api.github.com/repos/example/project/releases/assets/123"
+        result, records, content, leftovers = self.invoke(
+            "corrupt", urls=(api, "https://mirror.test/source"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(len(records), 1)
+        self.assertIn("Accept: application/octet-stream", records[0])
+        self.assertIn("checksum mismatch", result.stderr)
+        self.assertIsNone(content)
+        self.assertEqual(leftovers, [])
+
+    def test_asset_api_transport_exhaustion_leaves_no_output_or_partial(self):
+        api = "https://api.github.com/repos/example/project/releases/assets/123"
+        result, records, content, leftovers = self.invoke(
+            "offline", urls=("https://primary.test/source", api))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(len(records), 2)
+        self.assertIn("--retry-max-time", records[1])
+        self.assertIn("Accept: application/octet-stream", records[1])
+        self.assertIsNone(content)
+        self.assertEqual(leftovers, [])
+
+    def test_zstd_has_an_explicit_same_hash_official_asset_fallback(self):
+        source = (ROOT / "Makefile").read_text()
+        recipe = next(line for line in source.splitlines()
+                      if line.startswith("$(eval $(call FETCH,$(ZSTD_TAR),"))
+        self.assertIn("https://github.com/facebook/zstd/releases/download/", recipe)
+        self.assertIn("$(ZSTD_SHA256)", recipe)
+        self.assertIn(
+            "https://api.github.com/repos/meta/zstd/releases/assets/230758919",
+            recipe)
+        self.assertIn(
+            "ZSTD_SHA256   := eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3",
+            source)
+
     def test_makefile_uses_checked_downloader_and_explicit_ffmpeg_mirror(self):
         source = (ROOT / "Makefile").read_text()
         self.assertIn("bash tools/fetch-verified.sh", source)

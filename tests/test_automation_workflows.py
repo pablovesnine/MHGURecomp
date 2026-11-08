@@ -67,6 +67,24 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("|| true", self.builder)
         self.assertNotIn("matrix:", self.builder)
 
+    def test_actionlint_uses_verified_explicit_official_asset_fallback(self):
+        self.assertIn(
+            'bash tools/fetch-verified.sh "$RUNNER_TEMP/actionlint.tar.gz"',
+            self.checks)
+        self.assertIn(
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/"
+            "actionlint_1.7.12_linux_amd64.tar.gz", self.checks)
+        self.assertIn(
+            "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924896",
+            self.checks)
+        self.assertIn(
+            "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+            self.checks)
+        self.assertNotIn("curl --", self.checks)
+        self.assertNotIn("|| true", self.checks)
+        self.assertLess(self.checks.index("bash tools/fetch-verified.sh"),
+                        self.checks.index('tar -xzf "$RUNNER_TEMP/actionlint.tar.gz"'))
+
     def test_private_context_and_nonroot_image_access_are_mandatory(self):
         for contract in (
             "name: Export private tracked tools context",

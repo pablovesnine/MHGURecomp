@@ -33,11 +33,10 @@ jobs:
         run: |
           bash -n tools/build-linux-release.sh tools/upstream-version.sh tools/fetch-verified.sh tools/docker/*.sh
           shellcheck tools/build-linux-release.sh tools/upstream-version.sh tools/fetch-verified.sh tools/docker/*.sh
-          curl --fail --location --silent --show-error --retry 3 \
+          bash tools/fetch-verified.sh "$RUNNER_TEMP/actionlint.tar.gz" \
+            8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 \
             https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
-            -o "$RUNNER_TEMP/actionlint.tar.gz"
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" |
-            sha256sum --check -
+            https://api.github.com/repos/rhysd/actionlint/releases/assets/384924896
           tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
           "$RUNNER_TEMP/actionlint" -color .github/workflows/*.yml
           python3 -m unittest discover -s tests -p 'test_*.py' -v
