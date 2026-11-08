@@ -27,9 +27,9 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 
 ## Download
 
-I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.14.3). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
+I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.15.2). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
 
-The source transition targets upstream **0.15.3**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; newer behavior requires the corresponding source version. The downloadable package remains **0.14.3** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+The source transition targets upstream **0.15.3**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; newer behavior requires the corresponding source version. The downloadable package remains **0.15.2** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
 
 Upstream 0.15.0 changes FXAA shaders and the mod interpreter, adds an optional loading/shader indicator and controller access to Forge, adjusts controller rumble updates, and adds up to three extra supply maps to Village quests started from the Hub or Pub. I have not measured its performance or tested those changes on an ARM64 GPU or physical controller. Upstream speedup figures are not measured results for this fork.
 

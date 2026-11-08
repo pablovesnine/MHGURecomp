@@ -53,8 +53,8 @@ class ForkDocumentationTests(unittest.TestCase):
         guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
         maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
         self.assertIn("targets upstream **0.15.3**", readme)
-        self.assertIn("package remains **0.14.3**", readme)
-        self.assertIn("/releases/tag/0.14.3", readme)
+        self.assertIn("package remains **0.15.2**", readme)
+        self.assertIn("/releases/tag/0.15.2", readme)
         for text in ("LoadingIndicator", "INI-only", "restart",
                      "Open the Forge menu", "Minus + Plus"):
             self.assertIn(text, guide)
