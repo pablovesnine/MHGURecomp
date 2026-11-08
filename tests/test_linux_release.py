@@ -381,7 +381,8 @@ class ImageTests(unittest.TestCase):
             ("0.15.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub"),
             ("0.15.1", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins"),
             ("0.15.2", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout"),
-            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout"),
+            ("0.15.3", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo"),
+            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo"),
         ):
             result = subprocess.run(
                 ["bash", "-euo", "pipefail", "-c",
@@ -391,21 +392,17 @@ class ImageTests(unittest.TestCase):
                 capture_output=True, text=True, check=True,
             )
             self.assertEqual(result.stdout.strip(), expected, version)
-            self.assertEqual(
-                result.stderr.strip(),
-                ("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU\n"
-                 "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU "
-                 "-DMHGU_TEST_MOUSE_CAPTURE\n"
-                 "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU "
-                 "-DMHGU_TEST_MOUSE_CAPTURE -DMHGU_TEST_TEXT_HDR")
-                if version in ("0.15.2", "0.16.0") else
-                ("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU\n"
-                 "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU "
-                 "-DMHGU_TEST_MOUSE_CAPTURE")
-                if version == "0.15.1" else
-                "PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU"
-                if version == "0.15.0" else "", version,
-            )
+            expected_flags = []
+            pin = tuple(map(int, version.split(".")))
+            flags = []
+            for minimum, flag in (
+                ((0, 15, 0), "FORGE_MENU"), ((0, 15, 1), "MOUSE_CAPTURE"),
+                ((0, 15, 2), "TEXT_HDR"), ((0, 15, 3), "DIRECT"),
+            ):
+                if pin >= minimum:
+                    flags.append("-DMHGU_TEST_" + flag)
+                    expected_flags.append("PANEL_TEST_FLAGS=" + " ".join(flags))
+            self.assertEqual(result.stderr.strip(), "\n".join(expected_flags), version)
         self.assertIn('test-arcmerge "${upstream_tests[@]}"', script)
         self.assertIn(
             'engine-module-test/t/"{good,hidden,badapi,noapi,declines,notamodule}',

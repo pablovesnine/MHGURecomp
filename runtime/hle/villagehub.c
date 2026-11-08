@@ -251,9 +251,61 @@ static void supply_deliver(Cpu *c) {
     }
 }
 
+// Monster intros are skipped in a session (main 0x34cad8 / 0x34ce54), so their end never releases the spawn slots
+// that wait for a demo. For a Village quest in a session, release them once a hunter reaches the demo's area.
+#define FN_SPAWN_UPDATE   0x5a08e8u
+#define FN_SPAWN_RELEASE  0x5a3eccu
+#define G_SNETWORK        0x1a843f0u
+#define NET_IN_SESSION    0x63eu
+#define G_SPLAYER         0x1a85b58u
+#define PL_ZONE           0x1054u
+#define SQ_STATE          0x50u
+#define SQ_QUEST          0xe0u
+#define SQ_SLOT_COND      0x1514u
+#define SQ_SLOT_PARAM     0x151cu
+#define EVENT_TABLE       0x17a06fcu
+#define EVENT_COUNT       0x6bu
+
+static bool g_demo_released;
+static bool g_demo_test;  // debug, MHGU_VQ_DEMO_TEST: also alone and for any quest
+
+static bool slots_wait_for_demo(uint32_t sq) {
+    for (uint32_t i = 0; i < 5; i++) {
+        uint32_t s = sq + SQ_SLOT_COND + 12 * i;
+        if (LD8(s) == 4 && LD8(s + 1) == 0 && LD32(sq + SQ_SLOT_PARAM + 12 * i) == 0) return true;
+    }
+    return false;
+}
+
+static void spawn_update(Cpu *c) {
+    uint32_t sq = c->r[0], net = LD32(G_SNETWORK);
+    if (sq && LD8(sq + SQ_STATE) != 2) {
+        g_demo_released = false;
+    } else if (sq && !g_demo_released &&
+               (g_demo_test || (net && LD8(net + NET_IN_SESSION) && hpscale_village_from_hub(LD32(sq + SQ_QUEST)))) &&
+               slots_wait_for_demo(sq)) {
+        uint32_t q = LD32(sq + SQ_QUEST), spl = LD32(G_SPLAYER);
+        for (uint32_t e = EVENT_TABLE; e < EVENT_TABLE + 12 * EVENT_COUNT && !g_demo_released; e += 12) {
+            if (LD8(e) != 1 || LD32(e + 8) != q) continue;
+            for (uint32_t k = 0; k < 4 && spl; k++) {
+                uint32_t p = LD32(spl + 0x1c + 4 * k);
+                if (!p || LD8(p + PL_ZONE) != LD8(e + 3)) continue;
+                call4(c, FN_SPAWN_RELEASE, sq, 1, 0, 0);
+                g_demo_released = true;
+                LOG("[vqhub] Village quest %07u in a session: no demo online (event%03u, area %u); hunter %u is there, "
+                    "releasing the monsters it would have\n", q, LD8(e + 1), LD8(e + 3), k);
+                break;
+            }
+        }
+    }
+    fnhook_call_original(c, FN_SPAWN_UPDATE);
+}
+
 void villagehub_init(void) {
     g_trace = getenv("MHGU_VQ_TRACE") != NULL;
+    g_demo_test = getenv("MHGU_VQ_DEMO_TEST") != NULL;
     g_path = hle_alloc(64);
+    fnhook_set(FN_SPAWN_UPDATE, hle_register("villagehub:spawn_update", spawn_update));
     fnhook_set(FN_SUPPLY_DELIVER, hle_register("villagehub:supply_deliver", supply_deliver));
     fnhook_set(FN_QUEST_FILTER, hle_register("villagehub:quest_filter", quest_filter));
     fnhook_set(FN_QUEST_LOOKUP, hle_register("villagehub:quest_lookup", quest_lookup));

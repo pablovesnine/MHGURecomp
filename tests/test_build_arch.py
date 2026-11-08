@@ -52,6 +52,17 @@ def load_dist():
 
 
 class BuildTests(unittest.TestCase):
+    def test_0153_direct_and_demo_checks_are_required(self):
+        makefile = (ROOT / "Makefile").read_text()
+        entry = (ROOT / "tools/docker/build.sh").read_text()
+        for name in ("ldn-direct", "villagehub-demo"):
+            self.assertIn(f"test-{name}:", makefile)
+            self.assertIn(f"$(TEST_RUNNER) $(O)/{name}-test/test-{name}", makefile)
+            self.assertIn(f"/work/obj-aarch64/{name}-test/test-{name}", entry)
+        self.assertIn("upstream_tests+=(test-ldn-direct test-villagehub-demo)", entry)
+        self.assertIn("MHGU_TEST_DIRECT", entry)
+        self.assertNotIn("-f tests/test_ldn_direct.c", entry)
+
     def test_0152_text_dependencies_and_public_checks_are_required(self):
         recipe = "probe:\n\t@printf '%s\\n' '$(LDFLAGS)'\n"
         result = subprocess.run(

@@ -567,6 +567,21 @@ test-textlayout:
 	$(CC) $(TARGET_FLAGS) -fuse-ld=lld -std=gnu11 -O1 -g -fsigned-char -fno-strict-aliasing -ffunction-sections -fdata-sections -Wl,--gc-sections -Iruntime tests/test_textlayout.c -lz -lm -pthread -o $(O)/textlayout-test/test-textlayout
 	$(TEST_RUNNER) $(O)/textlayout-test/test-textlayout
 
+# Production spawn and direct-UDP helpers; synthetic memory and intercepted I/O.
+.PHONY: test-villagehub-demo test-ldn-direct
+test-villagehub-demo:
+	@mkdir -p $(O)/villagehub-demo-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld -std=gnu11 -O1 -g -fsigned-char -fno-strict-aliasing -ffunction-sections -fdata-sections -Wl,--gc-sections -Iruntime tests/test_villagehub_demo.c -o $(O)/villagehub-demo-test/test-villagehub-demo
+	$(TEST_RUNNER) $(O)/villagehub-demo-test/test-villagehub-demo
+
+test-ldn-direct:
+	@mkdir -p $(O)/ldn-direct-test/include/SDL3 $(O)/ldn-direct-test/include/vulkan
+	@printf '%s\n' '#pragma once' 'typedef union SDL_Event SDL_Event;' > $(O)/ldn-direct-test/include/SDL3/SDL.h
+	@printf '%s\n' '#pragma once' 'typedef struct VkInstance_T *VkInstance;' 'typedef struct VkPhysicalDevice_T *VkPhysicalDevice;' 'typedef struct VkDevice_T *VkDevice;' 'typedef struct VkQueue_T *VkQueue;' 'typedef struct VkPipelineCache_T *VkPipelineCache;' 'typedef struct VkRenderPass_T *VkRenderPass;' 'typedef struct VkCommandBuffer_T *VkCommandBuffer;' > $(O)/ldn-direct-test/include/vulkan/vulkan.h
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld -std=gnu11 -O1 -g -fsigned-char -fno-strict-aliasing -ffunction-sections -fdata-sections -Wl,--gc-sections -I$(O)/ldn-direct-test/include -Iruntime tests/test_ldn_direct.c -pthread -o $(O)/ldn-direct-test/test-ldn-direct
+	$(TEST_RUNNER) $(O)/ldn-direct-test/test-ldn-direct
+	$(TEST_RUNNER) $(O)/ldn-direct-test/test-ldn-direct --blocked
+
 # Translation coverage for both host-menu languages; no game files required.
 .PHONY: test-settings-locale
 test-settings-locale:

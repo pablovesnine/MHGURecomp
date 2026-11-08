@@ -29,7 +29,7 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 
 I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.14.3). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
 
-The source transition targets upstream **0.15.2**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; newer behavior requires the corresponding source version. The downloadable package remains **0.14.3** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+The source transition targets upstream **0.15.3**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; newer behavior requires the corresponding source version. The downloadable package remains **0.14.3** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
 
 Upstream 0.15.0 changes FXAA shaders and the mod interpreter, adds an optional loading/shader indicator and controller access to Forge, adjusts controller rumble updates, and adds up to three extra supply maps to Village quests started from the Hub or Pub. I have not measured its performance or tested those changes on an ARM64 GPU or physical controller. Upstream speedup figures are not measured results for this fork.
 
@@ -37,11 +37,13 @@ Upstream 0.15.1 adds experimental emulator crossplay, optional embedded servers,
 
 Upstream 0.15.2 adds text spacing and weight controls, parallel mod-archive checks with loading progress, optional HDR output, more 16:10 preview adjustments and a mouse API for mods. I keep HDR off by default. Font mods can need **Fix kerning Off / Bold text On**. I have not tested HDR output or these rendering changes on the device; see [text and HDR](docs/SETTINGS_UI.md#text-and-hdr).
 
+Upstream 0.15.3 adds optional direct UDP between a native hub's host and each player, with relay fallback, and releases monster spawns that wait for skipped Village intros in a session. I keep **Direct connections On** by default: both ends opting in lets a compatible hub server disclose their public IP addresses to each other. Save affects new player links, not existing ones. I have not measured latency, tested hole punching between real routers or reproduced the Village softlock in-game. See [direct connections](docs/SETTINGS_UI.md#direct-connections).
+
 Your device needs an ARM64 Linux userspace, glibc 2.39 or newer, a compatible C++ runtime and a desktop session. It also needs the Vulkan features required by the renderer, not just a matching version number. See [device requirements](docs/BUILD-LINUX-ARM64.md).
 
 ## Screenshots
 
-I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3, 0.15.0, 0.15.1 or 0.15.2, or predict performance on other devices.
+I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3, 0.15.0, 0.15.1, 0.15.2 or 0.15.3, or predict performance on other devices.
 
 ![MHGU gameplay on AYN Odin 3](docs/screenshots/ayn-odin3-gameplay.jpg) ![Online multiplayer lobby list](docs/screenshots/ayn-odin3-online.jpg) ![morerokk's custom settings menu](docs/screenshots/ayn-odin3-menu.jpg)
 
@@ -58,6 +60,7 @@ Settings live in `mhgurecomp.ini`, with explanations in the file. To change them
 - `[Controls]`: `FaceButtons` (Position / Label), `MenuConfirm` (host settings confirmations only), `BackgroundInput` and `ComboInputWindow` (Lenient / Strict). In-game confirmation buttons are not remapped by `MenuConfirm`. See [host confirmation](docs/SETTINGS_UI.md#host-confirmation-button).
 - `[Mouse]`: `MouseSensitivity` (1 = default, 0.1 to 10)
 - `[Multiplayer]`: `Port` and `Join` for direct play, `Server` and `Key` for internet hubs, `SyncSmallMonsters` and `ShareUrgentCredit` (default On: clearing another hunter's Urgent quest counts for you if you have unlocked it).
+- From 0.15.3, `[Multiplayer] Direct` defaults to On. Turn it Off to keep new native internet-hub links on the relay and avoid opting in to peer IP disclosure. Leave and rejoin to replace existing links.
 - `[Monster HP]`: HP factors for 1 to 4 hunters in Hub quests, and per-quest exceptions (default: all 1, the original game)
 - `[Village Quests]`: `VillageQuestsInHub` (default On), `HubHP` (default 2.0: monsters in Village quests posted in the Hub get this HP multiplier first, then the `[Monster HP]` factor)
 - `[Discord]`: optional `RichPresence` and `ShowHunter`. You need a compatible local Discord IPC client, so availability depends on your client and device environment.

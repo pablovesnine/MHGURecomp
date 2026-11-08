@@ -48,11 +48,11 @@ def linux_tab_labels(declaration):
 
 
 class ForkDocumentationTests(unittest.TestCase):
-    def test_0152_source_package_and_validation_boundaries(self):
+    def test_0153_source_package_and_validation_boundaries(self):
         readme = (ROOT / "README.md").read_text()
         guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
         maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
-        self.assertIn("targets upstream **0.15.2**", readme)
+        self.assertIn("targets upstream **0.15.3**", readme)
         self.assertIn("package remains **0.14.3**", readme)
         self.assertIn("/releases/tag/0.14.3", readme)
         for text in ("LoadingIndicator", "INI-only", "restart",
@@ -73,6 +73,11 @@ class ForkDocumentationTests(unittest.TestCase):
                      "Disable FSR and restart", "not tested HDR"):
             self.assertIn(text, guide)
         self.assertIn("test-textlayout", maintaining)
+        for text in ("Direct connections", "public UDP address", "new links",
+                     "20:00 UTC", "have not verified", "CGNAT", "0.15.3"):
+            self.assertIn(text, guide)
+        for text in ("test-ldn-direct", "test-villagehub-demo", "MHGU_TEST_DIRECT"):
+            self.assertIn(text, maintaining)
 
     def test_tab_parser_preserves_all_linux_tabs_and_excludes_other_targets(self):
         declaration = (
@@ -216,7 +221,7 @@ class ForkDocumentationTests(unittest.TestCase):
         self.assertIn("not include a dedicated hub server", readme)
         self.assertIn(
             "https://github.com/morerokk/MHGURecomp/tree/"
-            "851a0a5fbe70249fdace7e79d974fbde5e88892d/server", guide)
+            "51029aa1064c5cd1b7998e8479af82ddb15f91d3/server", guide)
 
     def test_0143_module_and_live_setting_boundaries(self):
         guide = (ROOT / "docs/ENGINE-MODULES.md").read_text()

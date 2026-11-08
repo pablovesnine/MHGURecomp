@@ -299,6 +299,35 @@ int main() {
     assert(config_live_bind(BIND_B, 0) == SDL_SCANCODE_SPACE && !config_live_bind(BIND_B, 1));
     tab();
     selected("port");
+#ifdef MHGU_TEST_DIRECT
+    assert(config_editable().ldn_direct == 1 && config_live_ldn_direct() == 1);
+    down(5);  // hosts, server, key, hub_check, direct
+    selected("direct");
+    confirm();
+    assert(settings_panel_dirty() && config_live_ldn_direct() == 1);
+    press(ImGuiKey_End);
+    press(ImGuiKey_GamepadDpadUp);
+    selected("save");
+    confirm();
+    assert(!settings_panel_dirty());
+    assert(config_editable().ldn_direct == 0 && config_live_ldn_direct() == 0);
+    {
+        std::ifstream in("obj/settings-test/panel-settings.ini");
+        std::string ini_text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        assert(ini_text.find("Direct = Off") != std::string::npos);
+    }
+    press(ImGuiKey_Home);
+    down(5);
+    selected("direct");
+    confirm();
+    press(ImGuiKey_End);
+    press(ImGuiKey_GamepadDpadUp);
+    selected("save");
+    confirm();
+    assert(config_live_ldn_direct() == 1);
+    press(ImGuiKey_Home);
+    selected("port");
+#endif
     press(ImGuiKey_GamepadL1);
     selected("face");
     tab();

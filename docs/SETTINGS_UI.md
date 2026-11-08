@@ -11,7 +11,7 @@ Use L/R to cycle tabs, or click a tab label.
 | Display | Window mode, display and render resolution, aspect ratio, field of view and HUD anchor. |
 | Graphics & Audio | Volume, background mute, FPS, VSync, anti-aliasing, draw distance and FSR. |
 | Controls | Face-button mapping, background input, combo input window, mouse sensitivity and keyboard/mouse keybinds. |
-| Network | Host port, search hosts, hub server, matchmaking key, hub check and Discord presence. |
+| Network | Host port, search hosts, hub server, matchmaking key, hub check, direct connections (0.15.3) and Discord presence. |
 | Misc | Hub rules, monster HP scaling and per-quest overrides. |
 | Mods | Enable and order installed mods, review file conflicts, and open Forge in 0.15.0. |
 | Cheats | Toggle cheats and add a cheat. |
@@ -113,7 +113,21 @@ Key = my-private-group
 
 The hub relays internet connections, so players do not need to forward their own game ports. For direct internet play without a hub, the host must be reachable. Forward the host's chosen game port for TCP and UDP, then enter its public address in each joining player's **Search hosts** field. LAN discovery does not need an internet hub.
 
-I do not include a standalone dedicated hub-server product in this repository or ARM64 package. To run the native hub service separately, follow the [upstream 0.14.3 server instructions](https://github.com/morerokk/MHGURecomp/tree/851a0a5fbe70249fdace7e79d974fbde5e88892d/server). That service is distinct from the optional embedded emulator servers in 0.15.1. The native server operator needs to make the chosen hub port reachable for TCP and UDP. That is separate from players forwarding game ports. The client and server protocols must be compatible. I have not tested a self-hosted server deployment on the ARM64 device.
+I do not include a standalone dedicated hub-server product in this repository or ARM64 package. To run the native hub service separately, follow the [upstream 0.15.3 server instructions](https://github.com/morerokk/MHGURecomp/tree/51029aa1064c5cd1b7998e8479af82ddb15f91d3/server). That service is distinct from the optional embedded emulator servers in 0.15.1. The native server operator needs to make the chosen hub port reachable for TCP and UDP. That is separate from players forwarding game ports. The client and server protocols must be compatible. I have not tested a self-hosted server deployment on the ARM64 device.
+
+### Direct connections
+
+From 0.15.3, **Direct connections** in **Network** maps to `[Multiplayer] Direct`, default On. When both the host and a player opt in, a compatible native hub server can give each the other's public UDP address. Their clients try direct UDP and keep the relay ready as fallback. Off means new links do not request peer addresses or offer direct UDP. This is not encrypted transport.
+
+I retain the upstream live setting, but each player link captures its value when it starts. **Save** changes the value for new links; it does not tear down or change active links. Leave and rejoin the game hub to apply Off to existing connections. `MHGU_LDN_DIRECT` is the environment override. Direct does not reconfigure emulator crossplay.
+
+Older clients and hub servers can stay on the relay. A compatible server update is needed for address exchange; upstream announced a default-server redeploy for 8 November 2026 at 20:00 UTC, but I have not verified that deployment. The open-before-passcoded hub ordering is also a server-side change, not a client fix I can deploy here.
+
+Direct UDP may fail behind symmetric NAT, CGNAT or a firewall. The client falls back to relayed UDP, then TCP when UDP is unavailable. I have not tested NAT traversal across real routers or measured a latency improvement. Public synthetic protocol tests are not a multiplayer or privacy audit of the deployed service.
+
+I found one upstream recovery limit in a synthetic probe: after a direct-path outage, three acknowledgements ten seconds apart still accumulate and re-enable direct mode. The counter does not enforce the documented consecutive-answer behavior. I retain that code without claiming it prevents path flapping.
+
+The Village change in this version releases demo-dependent spawn slots once a hunter reaches a matching event area during a Village quest in a session. I test the hook's gates, one-shot release, between-quest reset and original-call ordering with synthetic memory, retaining the supply-box trace fix. I have not reproduced or resolved a softlock in a real hunt on the device.
 
 ### Experimental emulator crossplay
 

@@ -251,7 +251,8 @@ class SyncTests(unittest.TestCase):
                          "keep")
         for path in ("tools/test-crossplay.py", "tests/test_crossplay_runner.py",
                      "tests/crossplay_fixture.c", "tests/frame_counter_fixture.c",
-                     "tests/test_textlayout.c"):
+                     "tests/test_textlayout.c", "tests/test_ldn_direct.c",
+                     "tests/test_villagehub_demo.c"):
             self.assertEqual(sync.classify(policy, path), "keep")
         for path in ("runtime/hle/hpscale.c", "runtime/interp.c",
                      "runtime/dispatch.c", "runtime/settings_panel.cpp",
