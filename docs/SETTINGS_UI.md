@@ -39,7 +39,7 @@ Changes stay in the draft until you choose **Save**. If you close the panel with
 
 Live settings apply on Save, including volume, FPS, FOV, anti-aliasing, VSync, mouse sensitivity, face mapping and background input. Language, symbols, theme and interface scale preview immediately, but Save makes them permanent. An asterisk marks settings that need a restart. After saving, the status shows a pending restart if those values differ from the running configuration.
 
-Upstream 0.14.3 also makes small-monster synchronization, monster HP rules, village-in-hub rules and bonus-content enablement live. HP factors apply when HP is assigned, not retroactively to every living monster. Disabling village quests while browsing their menu takes effect when you return to the rank/star menu. Bonus content is checked on the next qualifying save-file open. These changes do not replace save backups or device testing.
+Upstream 0.14.3 also makes small-monster synchronization, monster HP rules, village-in-hub rules and bonus-content enablement live. HP factors apply when HP is assigned, not retroactively to every living monster. From 0.15.4, changed factors affect the next large monster's HP assignment and part HP at its next refill, not all current values immediately. Disabling village quests while browsing their menu takes effect when you return to the rank/star menu. Bonus content is checked on the next qualifying save-file open. These changes do not replace save backups or device testing.
 
 The game saves the INI file atomically. If a write fails, it keeps the previous file and your draft so you can correct the problem. It preserves comments, unknown keys, aliases, unchanged value spellings and unchanged environment overrides. Mod order and cheat state are saved separately, so check any reported error before assuming everything was saved.
 
@@ -92,6 +92,16 @@ Disable FSR and restart before trying HDR if FSR is running. The HDR startup pat
 
 `[HDR] UnclampedScene = On` and `HDRFormat = Auto` are INI-only. Close the game before editing them and restart. Use your display's measured/specification peak rather than assuming the default 1000 nits fits it. I have not tested HDR presentation, colour accuracy, analysis overlays or GPU compatibility on ARM64 hardware. Public font/archive fixtures do not validate game typography or rendering.
 
+## Offline transitions, HP and mouse aiming
+
+In 0.15.4, the offline fastload hooks shorten selected town, stream-stop and music-fade waits only outside a network session. I retain them enabled by default. Set the environment variable `MHGU_NO_FASTLOAD=1` before launch to opt out; it is not an INI key or a new menu row. I have not measured loading times on the device, and the hooks do not promise to remove every loading wait.
+
+The existing monster HP factors now also scale part HP and the associated part thresholds, including the Village-in-Hub multiplier. A changed factor applies to part HP at its next refill, not to all accumulated part damage immediately. The part-table multiplier is capped at 16. This is not a separate setting and does not resolve the crossplay HP-scaling limitation below. I have not checked part breaks, staggers or multiplayer consistency in a real hunt.
+
+Mouse input now also controls bow aiming. The hook handles the special aim modes separately from the normal camera, applies the existing mouse sensitivity and in-game inversion, and avoids consuming the same movement twice. I test bounded synthetic camera states and transitions, not physical mouse feel, weapon behavior or controller interoperability on the device.
+
+The ImGui change treats a moving vertex-write cursor as a data pointer rather than a persistent mirrored object. The graphics change sends -1.0 in the front-face uniform and converts it to an integer mask in the shader. I check generated tables, pointer conversions and compiler contracts; these checks do not demonstrate that a particular plugin, HDR display or GPU renders correctly.
+
 ## Custom hub server
 
 The ARM64 client supports the upstream hub protocol. Upstream 0.14.3 uses protocol 3 and cannot share a game hub with earlier recomp releases, even when the server and key match. I keep the desktop public matchmaking behavior rather than the mobile-only room. Open the **Network** tab to configure it:
@@ -113,7 +123,7 @@ Key = my-private-group
 
 The hub relays internet connections, so players do not need to forward their own game ports. For direct internet play without a hub, the host must be reachable. Forward the host's chosen game port for TCP and UDP, then enter its public address in each joining player's **Search hosts** field. LAN discovery does not need an internet hub.
 
-I do not include a standalone dedicated hub-server product in this repository or ARM64 package. To run the native hub service separately, follow the [upstream 0.15.3 server instructions](https://github.com/morerokk/MHGURecomp/tree/51029aa1064c5cd1b7998e8479af82ddb15f91d3/server). That service is distinct from the optional embedded emulator servers in 0.15.1. The native server operator needs to make the chosen hub port reachable for TCP and UDP. That is separate from players forwarding game ports. The client and server protocols must be compatible. I have not tested a self-hosted server deployment on the ARM64 device.
+I do not include a standalone dedicated hub-server product in this repository or ARM64 package. To run the native hub service separately, follow the [upstream 0.15.4 server instructions](https://github.com/morerokk/MHGURecomp/tree/d00c21323612b919a2c3fe279c0a8c24ff3347d1/server). That service is distinct from the optional embedded emulator servers in 0.15.1. The native server operator needs to make the chosen hub port reachable for TCP and UDP. That is separate from players forwarding game ports. The client and server protocols must be compatible. I have not tested a self-hosted server deployment on the ARM64 device.
 
 ### Direct connections
 

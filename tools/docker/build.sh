@@ -79,6 +79,9 @@ if printf '%s\n' 0.15.3 "$source_version" | sort -V -C; then
   upstream_tests+=(test-ldn-direct test-villagehub-demo)
   args+=("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU -DMHGU_TEST_MOUSE_CAPTURE -DMHGU_TEST_TEXT_HDR -DMHGU_TEST_DIRECT")
 fi
+if printf '%s\n' 0.15.4 "$source_version" | sort -V -C; then
+  upstream_tests+=(test-fastload test-hpscale test-mousecam)
+fi
 if [[ $mode == release ]]; then
   [[ -r /game/exefs/main && -r /game/exefs/sdk && -d /game/romfs ]] \
     || die "dump is unreadable in Docker; check ownership, ACLs and SELinux"
@@ -133,6 +136,12 @@ if [[ $mode == check ]]; then
     python3 /opt/mhgu/docker/check-elf.py aarch64 \
       /work/obj-aarch64/ldn-direct-test/test-ldn-direct \
       /work/obj-aarch64/villagehub-demo-test/test-villagehub-demo
+  fi
+  if printf '%s\n' 0.15.4 "$source_version" | sort -V -C; then
+    python3 /opt/mhgu/docker/check-elf.py aarch64 \
+      /work/obj-aarch64/fastload-test/test-fastload \
+      /work/obj-aarch64/hpscale-test/test-hpscale \
+      /work/obj-aarch64/mousecam-test/test-mousecam
   fi
   python3 tests/test_build_arch.py
   python3 tests/test_linux_release.py

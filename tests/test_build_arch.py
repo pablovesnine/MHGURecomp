@@ -52,6 +52,33 @@ def load_dist():
 
 
 class BuildTests(unittest.TestCase):
+    def test_0154_hook_checks_are_required_with_target_abi(self):
+        makefile = (ROOT / "Makefile").read_text()
+        entry = (ROOT / "tools/docker/build.sh").read_text()
+        names = ("fastload", "hpscale", "mousecam")
+        for name in names:
+            self.assertIn(f"test-{name}:", makefile)
+            self.assertIn(f"$(TEST_RUNNER) $(O)/{name}-test/test-{name}", makefile)
+            self.assertIn(f"/work/obj-aarch64/{name}-test/test-{name}", entry)
+            self.assertNotIn(f"-f tests/test_{name}.c", entry)
+        self.assertIn("upstream_tests+=(test-fastload test-hpscale test-mousecam)", entry)
+        result = subprocess.run(
+            ["make", "-n", *(f"test-{name}" for name in names),
+             "HOST_ARCH=x86_64", "SYSROOT=/test/sysroot", "O=/test/objects",
+             "TEST_RUNNER=qemu-aarch64 -L /test/sysroot"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        compiles = [line for line in result.stdout.splitlines()
+                    if line.startswith("clang ")]
+        self.assertEqual(len(compiles), len(names))
+        for command in compiles:
+            for flag in ("--target=aarch64-linux-gnu", "--sysroot=/test/sysroot",
+                         "-march=armv8-a", "-fsigned-char",
+                         "-fno-strict-aliasing"):
+                self.assertIn(flag, command)
+            self.assertNotIn("-mavx", command)
+
     def test_0153_direct_and_demo_checks_are_required(self):
         makefile = (ROOT / "Makefile").read_text()
         entry = (ROOT / "tools/docker/build.sh").read_text()

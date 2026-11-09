@@ -48,13 +48,20 @@ def linux_tab_labels(declaration):
 
 
 class ForkDocumentationTests(unittest.TestCase):
-    def test_0153_source_package_and_validation_boundaries(self):
+    def test_0154_source_package_and_validation_boundaries(self):
         readme = (ROOT / "README.md").read_text()
         guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
         maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
-        self.assertIn("targets upstream **0.15.3**", readme)
-        self.assertIn("package remains **0.15.2**", readme)
-        self.assertIn("/releases/tag/0.15.2", readme)
+        self.assertIn("targets upstream **0.15.4**", readme)
+        self.assertIn("package remains **0.15.3**", readme)
+        self.assertIn("/releases/tag/0.15.3", readme)
+        self.assertIn("python3 tools/publish-linux-release.py --dist dist", readme)
+        for text in ("MHGU_NO_FASTLOAD", "part HP", "next refill",
+                     "bow", "not measured"):
+            self.assertIn(text, guide)
+        for text in ("test-fastload", "test-hpscale", "test-mousecam",
+                     "test_0154_portable.py"):
+            self.assertIn(text, maintaining)
         for text in ("LoadingIndicator", "INI-only", "restart",
                      "Open the Forge menu", "Minus + Plus"):
             self.assertIn(text, guide)
@@ -221,7 +228,7 @@ class ForkDocumentationTests(unittest.TestCase):
         self.assertIn("not include a dedicated hub server", readme)
         self.assertIn(
             "https://github.com/morerokk/MHGURecomp/tree/"
-            "51029aa1064c5cd1b7998e8479af82ddb15f91d3/server", guide)
+            "d00c21323612b919a2c3fe279c0a8c24ff3347d1/server", guide)
 
     def test_0143_module_and_live_setting_boundaries(self):
         guide = (ROOT / "docs/ENGINE-MODULES.md").read_text()

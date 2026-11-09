@@ -15,7 +15,7 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 - Configurable frame-rate cap from 30 to 240 FPS, with actual performance depending on hardware and settings
 - SDL-compatible controllers and experimental, remappable keyboard/mouse controls
 - Optional small-monster synchronization in multiplayer. Upstream 0.14.0 restores the default to On and fixes related disconnections and high-FPS monster behavior. Existing explicit Off settings stay Off.
-- Optional monster HP scaling by player count
+- Optional monster HP scaling by player count, including part HP from 0.15.4
 - Speed up village/hub event-camera pans by pressing A
 - Optional village quests in multiplayer (press L/R at the quest counter), with adjusted monster HP
 - Mod overlays, archive merging, exefs patches and Forge plugins, with mod-dependent compatibility (see [Mods](#mods))
@@ -27,9 +27,9 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 
 ## Download
 
-I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.15.2). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
+I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.15.3). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
 
-The source transition targets upstream **0.15.3**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; newer behavior requires the corresponding source version. The downloadable package remains **0.15.2** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+The source transition targets upstream **0.15.4**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; newer behavior requires the corresponding source version. The downloadable package remains **0.15.3** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
 
 Upstream 0.15.0 changes FXAA shaders and the mod interpreter, adds an optional loading/shader indicator and controller access to Forge, adjusts controller rumble updates, and adds up to three extra supply maps to Village quests started from the Hub or Pub. I have not measured its performance or tested those changes on an ARM64 GPU or physical controller. Upstream speedup figures are not measured results for this fork.
 
@@ -39,11 +39,13 @@ Upstream 0.15.2 adds text spacing and weight controls, parallel mod-archive chec
 
 Upstream 0.15.3 adds optional direct UDP between a native hub's host and each player, with relay fallback, and releases monster spawns that wait for skipped Village intros in a session. I keep **Direct connections On** by default: both ends opting in lets a compatible hub server disclose their public IP addresses to each other. Save affects new player links, not existing ones. I have not measured latency, tested hole punching between real routers or reproduced the Village softlock in-game. See [direct connections](docs/SETTINGS_UI.md#direct-connections).
 
+Upstream 0.15.4 shortens selected offline transition waits, extends monster HP factors to part HP, adds mouse control to bow aiming, and changes an ImGui draw-buffer cursor mapping and the renderer's front-face mask representation. I retain the network-session waits. I have not measured loading times or tested bow aiming, part breaks, plugin rendering or the graphics changes in a real hunt on ARM64. See [0.15.4 gameplay settings](docs/SETTINGS_UI.md#offline-transitions-hp-and-mouse-aiming).
+
 Your device needs an ARM64 Linux userspace, glibc 2.39 or newer, a compatible C++ runtime and a desktop session. It also needs the Vulkan features required by the renderer, not just a matching version number. See [device requirements](docs/BUILD-LINUX-ARM64.md).
 
 ## Screenshots
 
-I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3, 0.15.0, 0.15.1, 0.15.2 or 0.15.3, or predict performance on other devices.
+I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3, 0.15.0, 0.15.1, 0.15.2, 0.15.3 or 0.15.4, or predict performance on other devices.
 
 ![MHGU gameplay on AYN Odin 3](docs/screenshots/ayn-odin3-gameplay.jpg) ![Online multiplayer lobby list](docs/screenshots/ayn-odin3-online.jpg) ![morerokk's custom settings menu](docs/screenshots/ayn-odin3-menu.jpg)
 
@@ -61,8 +63,8 @@ Settings live in `mhgurecomp.ini`, with explanations in the file. To change them
 - `[Mouse]`: `MouseSensitivity` (1 = default, 0.1 to 10)
 - `[Multiplayer]`: `Port` and `Join` for direct play, `Server` and `Key` for internet hubs, `SyncSmallMonsters` and `ShareUrgentCredit` (default On: clearing another hunter's Urgent quest counts for you if you have unlocked it).
 - From 0.15.3, `[Multiplayer] Direct` defaults to On. Turn it Off to keep new native internet-hub links on the relay and avoid opting in to peer IP disclosure. Leave and rejoin to replace existing links.
-- `[Monster HP]`: HP factors for 1 to 4 hunters in Hub quests, and per-quest exceptions (default: all 1, the original game)
-- `[Village Quests]`: `VillageQuestsInHub` (default On), `HubHP` (default 2.0: monsters in Village quests posted in the Hub get this HP multiplier first, then the `[Monster HP]` factor)
+- `[Monster HP]`: HP factors for 1 to 4 hunters in Hub quests, and per-quest exceptions (default: all 1, the original game). From 0.15.4, the factor also applies to part HP; see the timing rules in [0.15.4 gameplay settings](docs/SETTINGS_UI.md#offline-transitions-hp-and-mouse-aiming).
+- `[Village Quests]`: `VillageQuestsInHub` (default On), `HubHP` (default 2.0: monsters in Village quests posted in the Hub get this HP multiplier first, then the `[Monster HP]` factor; from 0.15.4 this also scales part HP)
 - `[Discord]`: optional `RichPresence` and `ShowHunter`. You need a compatible local Discord IPC client, so availability depends on your client and device environment.
 - `[Bonus Content]`: `BonusContent` (default On), see below
 - `[Audio]`: `Volume` (0 to 100: the whole game), `MuteInBackground` (On / Off, default Off: no sound while the game's window is in the background)
@@ -171,6 +173,14 @@ bash tools/build-linux-release.sh --game "$GAME_DIR" --jobs 2 --publish
 ```
 
 Publication requires full ARM64 validation and a verified tools image for the exact source SHA. The dump stays local. The command uploads only the checked package and `SHA256SUMS`. It does not replace an existing release with different content. See [publication checks and recovery](docs/MAINTAINING.md#local-build-and-privacy).
+
+To publish an already successful build from `dist` without compiling again, I use the standalone publisher with the same clean source checkout and verified package metadata. GitHub CLI authentication, Docker buildx and host `llvm-objdump` are still required:
+
+```bash
+python3 tools/publish-linux-release.py --dist dist
+```
+
+For a build made with `--publish`, retry the private output directory printed by that command instead of assuming it is `dist`. I keep the checked archive and `SHA256SUMS` together; a failed build can leave older files, so I do not publish merely because an archive exists.
 
 ## Install
 

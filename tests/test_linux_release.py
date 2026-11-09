@@ -382,7 +382,8 @@ class ImageTests(unittest.TestCase):
             ("0.15.1", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins"),
             ("0.15.2", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout"),
             ("0.15.3", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo"),
-            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo"),
+            ("0.15.4", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo\ntest-fastload\ntest-hpscale\ntest-mousecam"),
+            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo\ntest-fastload\ntest-hpscale\ntest-mousecam"),
         ):
             result = subprocess.run(
                 ["bash", "-euo", "pipefail", "-c",

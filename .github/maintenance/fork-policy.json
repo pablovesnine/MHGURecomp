@@ -9,6 +9,8 @@
       "tools/test-crossplay.py", "tests/test_crossplay_runner.py",
       "tests/crossplay_fixture.c", "tests/frame_counter_fixture.c",
       "tests/test_textlayout.c", "tests/test_ldn_direct.c", "tests/test_villagehub_demo.c",
+      "tests/test_fastload.c", "tests/test_hpscale.c", "tests/test_mousecam.c",
+      "tests/test_0154_portable.py",
       "updater/updater.h", "runtime/hle/villagehub.c",
       "tests/test_build_arch.py", "tests/test_linux_release.py", "tests/test_fork_docs.py",
       "tests/test_upstream_sync.py", "tests/test_automation_workflows.py",

@@ -582,6 +582,24 @@ test-ldn-direct:
 	$(TEST_RUNNER) $(O)/ldn-direct-test/test-ldn-direct
 	$(TEST_RUNNER) $(O)/ldn-direct-test/test-ldn-direct --blocked
 
+# Production 0.15.4 hooks with bounded synthetic guest memory and no network.
+HOOK_TEST_FLAGS = $(GENARCH) -std=gnu11 -O1 -g -Wall -Wextra -Werror -fsigned-char -fno-strict-aliasing -ffp-contract=off -Iruntime
+.PHONY: test-fastload test-hpscale test-mousecam
+test-fastload:
+	@mkdir -p $(O)/fastload-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) tests/test_fastload.c -pthread -lm -o $(O)/fastload-test/test-fastload
+	$(TEST_RUNNER) $(O)/fastload-test/test-fastload
+
+test-hpscale:
+	@mkdir -p $(O)/hpscale-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) tests/test_hpscale.c -pthread -lm -o $(O)/hpscale-test/test-hpscale
+	$(TEST_RUNNER) $(O)/hpscale-test/test-hpscale
+
+test-mousecam:
+	@mkdir -p $(O)/mousecam-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) tests/test_mousecam.c -pthread -lm -o $(O)/mousecam-test/test-mousecam
+	$(TEST_RUNNER) $(O)/mousecam-test/test-mousecam
+
 # Translation coverage for both host-menu languages; no game files required.
 .PHONY: test-settings-locale
 test-settings-locale:
