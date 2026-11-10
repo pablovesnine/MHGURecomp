@@ -1,29 +1,19 @@
 name: Linux fork checks and manual ARM64 validation
 
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  quick:
-    if: github.event_name != 'workflow_dispatch'
-    permissions:
-      contents: read
-    uses: ./.github/workflows/linux-checks.yml
-
   validate:
     if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
     uses: ./.github/workflows/linux-builder.yml
     with:
-      # Full tools validation is explicit; ordinary changes use quick checks.
+      # The reusable builder runs quick checks once before ARM64 validation.
       candidate_ref: ''
 
   publish:

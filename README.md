@@ -204,7 +204,7 @@ I do not build or ship a binary updater. The legacy **Updates** key is ignored. 
 
 ## Maintenance
 
-Automation checks for published stable upstream releases every hour and merges compatible releases into `master` only after full ARM64 validation. An unchanged release does not start another build. Normal fork edits run quick checks. Outside upstream updates, full Docker/QEMU validation runs only when requested manually.
+I run Actions only when I request validation or an upstream update manually. Pushes, PRs and a timer do not start checks. The upstream workflow merges a compatible stable release into `master` only after full ARM64 validation, then publishes the same tested tools image. I keep the safety checks but avoid repeated runs and new cache exports. Building on my PC does not require Actions; publishing a release still requires validated source and the verified public tools image.
 
 [Maintenance](docs/MAINTAINING.md) · [Device requirements and troubleshooting](docs/BUILD-LINUX-ARM64.md) · [Settings](docs/SETTINGS_UI.md)
 

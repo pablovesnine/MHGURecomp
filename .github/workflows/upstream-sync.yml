@@ -1,10 +1,6 @@
 name: Synchronize stable upstream releases after ARM64 validation
 
 on:
-  push:
-    branches: [master]
-  schedule:
-    - cron: '23 * * * *'
   workflow_dispatch:
     inputs:
       retry_validation:

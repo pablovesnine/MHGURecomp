@@ -157,8 +157,12 @@ class WorkflowTests(unittest.TestCase):
             self.assertFalse((context / "private.txt").exists())
 
     def test_ordinary_changes_never_trigger_full_validation(self):
-        self.assertIn("uses: ./.github/workflows/linux-checks.yml",
-                      job(self.ci, "quick"))
+        for text in (self.ci, self.sync):
+            events = text.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+            self.assertIn("  workflow_dispatch:", events)
+            for event in ("push", "pull_request", "schedule", "workflow_run"):
+                self.assertNotRegex(events, rf"(?m)^  {event}:")
+        self.assertNotRegex(self.ci, r"(?m)^  quick:")
         self.assertIn("if: github.event_name == 'workflow_dispatch'",
                       job(self.ci, "validate"))
         self.assertNotRegex(self.checks, r"(?m)^\s+docker\s")
@@ -169,8 +173,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("github.event_name == 'push'", job(self.ci, "publish"))
 
     def test_no_pr_and_explicit_validation_publication(self):
-        self.assertIn("'23 * * * *'", self.sync)
-        self.assertNotIn("'23 */6 * * *'", self.sync)
+        self.assertNotIn("cron:", self.sync)
         self.assertIn("group: upstream-sync-master", self.sync)
         self.assertIn("cancel-in-progress: false", self.sync)
         self.assertIn("retry_validation:", self.sync)
@@ -178,10 +181,17 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("uses: ./.github/workflows/linux-publisher.yml", job(self.sync, "publish"))
         self.assertNotIn("pull-requests: write", self.sync)
         self.assertNotIn("workflow_run:", self.sync)
-        self.assertIn("branches: [master]", self.ci)
         self.assertNotIn("fork-arm64-maintenance", self.ci)
-        self.assertIn("pull_request:", self.ci)
+        self.assertNotIn("pull_request:", self.ci)
         self.assertIn("uses: ./.github/workflows/linux-publisher.yml", job(self.ci, "publish"))
+
+    def test_tools_storage_uses_existing_cache_without_new_exports(self):
+        self.assertIn("cache-from: type=gha,scope=linux-arm64-tools", self.builder)
+        self.assertNotIn("cache-to:", self.builder)
+        self.assertRegex(
+            self.builder, r"DOCKER_BUILD_RECORD_UPLOAD:\s*['\"]false['\"]")
+        self.assertIn("retention-days: 1", self.builder)
+        self.assertEqual(self.builder.count("uses: docker/build-push-action@"), 1)
 
     def test_trusted_prepare_promote_and_report(self):
         for name in ("prepare", "promote", "report"):

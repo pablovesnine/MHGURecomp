@@ -118,6 +118,17 @@ class ForkDocumentationTests(unittest.TestCase):
         self.assertIn("--dry-run", maintaining)
         self.assertNotIn("every six hours", readme + maintaining)
 
+    def test_manual_actions_and_low_storage_policy_are_documented(self):
+        readme = (ROOT / "README.md").read_text()
+        maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
+        for text in (readme, maintaining):
+            self.assertIn("only when I request", text)
+            self.assertNotIn("every hour", text)
+        for text in ("no scheduled", "Pushes and PRs do not start",
+                     "existing cache", "no new cache",
+                     "one day", "does not require Actions"):
+            self.assertIn(text, maintaining)
+
     def test_reported_device_results_and_original_screenshots(self):
         readme = (ROOT / "README.md").read_text()
         for text in ("AYN Odin 3", "ArmadaOS 20261010", "120 FPS", "Eco",

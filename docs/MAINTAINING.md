@@ -1,6 +1,6 @@
 # Maintenance
 
-`master` is the only permanent branch, and normal merge commits preserve upstream history. There is no need to force-push, reset published history or manually approve routine upstream updates.
+`master` is the only permanent branch, and normal merge commits preserve upstream history. I request upstream updates manually to control Actions usage; the workflow still validates and promotes the exact candidate without a separate approval. There is no need to force-push or reset published history.
 
 ## Repository structure
 
@@ -8,7 +8,7 @@ The public build entry points are `tools/build-linux-release.sh` and `tools/upst
 
 The five maintained workflows each have a separate job:
 
-- [linux-ci.yml](../.github/workflows/linux-ci.yml): push/PR quick checks and manual full validation.
+- [linux-ci.yml](../.github/workflows/linux-ci.yml): manual full validation, with one reusable quick-check job.
 - [linux-checks.yml](../.github/workflows/linux-checks.yml): reusable quick checks.
 - [linux-builder.yml](../.github/workflows/linux-builder.yml): reusable ARM64 validation and tools-image artifact.
 - [linux-publisher.yml](../.github/workflows/linux-publisher.yml): publish an already validated master image.
@@ -16,9 +16,9 @@ The five maintained workflows each have a separate job:
 
 The experimental Vulkan replay diagnostic (vkreplay.c) is retired. `tools/vkprobe.c` is still available as an optional diagnostic, but the build does not need it. Runtime networking still needs `updater/sha256.c` and its interface in `updater/updater.h`. Despite the directory name, these are not a binary updater. The recompiler differential tests still need `tools/test_lift.py` and `tools/test_harness.c`.
 
-## Automatic upstream updates
+## Manual upstream updates
 
-**Synchronize stable upstream releases after ARM64 validation** checks published Releases from `morerokk/MHGURecomp` every hour and after pushes to master. You can also run it manually from Actions. Drafts, prereleases, standalone tags and commits on upstream's development master do not trigger integration.
+I run **Synchronize stable upstream releases after ARM64 validation** only when I request an update manually from Actions. There is no scheduled polling or push trigger. It checks published Releases from `morerokk/MHGURecomp`; drafts, prereleases, standalone tags and commits on upstream's development master do not qualify for integration.
 
 1. Select the most recently published stable release (ID breaks time ties), validate its numeric version and pin its exact tag object and commit.
 2. Prepare a policy-aware merge using the previous recorded release as its explicit three-way base, not Git's historical merge base.
@@ -55,9 +55,11 @@ An unexpected shared-code conflict stops integration and updates one issue. If t
 
 ## CI and images
 
-Pushes and PRs run syntax checks, ShellCheck, actionlint and offline Python regressions for policy, release state, documentation and privacy. These quick checks do not build Docker images or run QEMU.
+Pushes and PRs do not start Actions. I run syntax checks, ShellCheck, actionlint and offline Python regressions locally before pushing. The manual validator runs these quick checks once before the ARM64 job; the quick-check job itself does not build Docker images or run QEMU.
 
-Full validation runs for a new eligible stable release or when you manually request **Linux fork checks and manual ARM64 validation**. It starts with quick checks, then uses Docker/QEMU to test compiler probes, the ARM64 runtime, settings/panel navigation, fault handling and ELF imports. Neither workflow receives a dump or tests the game or GPU.
+Full validation runs only when I request **Synchronize stable upstream releases after ARM64 validation** for an eligible update or **Linux fork checks and manual ARM64 validation** for current master. I use one workflow, not both for the same candidate, and inspect failures before authorizing a retry. It starts with quick checks, then uses Docker/QEMU to test compiler probes, the ARM64 runtime, settings/panel navigation, fault handling and ELF imports. Neither workflow receives a dump or tests the game or GPU.
+
+I reuse the existing cache for reads but export no new cache. Docker build records are not uploaded. The only required image transport artifact expires after one day; after verifying publication, I can remove that exact artifact early. I keep the tested-image handoff and separate job permissions rather than rebuilding the image or weakening publication checks. A manual workflow contains several jobs, so one workflow is not one billed job.
 
 For source pins from 0.14.3, engine-module and cheat tests are mandatory. From 0.15.0, `test-interp` exercises public synthetic ARM instructions, predecoded operations and cache invalidation; `test-villagehub` checks synthetic supply slots and trace safety. The panel fixture also compiles with `MHGU_TEST_FORGE_MENU` to test disabled access and one-shot Forge requests without loading a plugin. Selection uses the tracked source pin, never the check-mode package version `0` or whether a test file happens to exist. Missing sources must fail.
 
@@ -99,11 +101,13 @@ Read/write Git/API work, read-only candidate execution and package publication r
 
 ## GitHub settings
 
-Keep Actions, scheduled workflows and Issues enabled. The GHCR package must stay public and accessible to this repository's Actions. GitHub may disable schedules in public repositories after prolonged inactivity. If that happens, re-enable them in Actions rather than adding artificial keepalive commits. Dependency update PRs stay open for review and are separate from upstream sync.
+Keep Actions and Issues enabled when requesting validation. These workflows have no schedules and do not run on pushes or PRs; I do not use keepalive commits. The GHCR package must stay public and accessible to this repository's Actions. Dependency update PRs stay open for review and are separate from upstream sync. I check account usage before a manual run; repository workflow settings do not establish the cause or cost of an account-level usage warning.
 
 ## Local build and privacy
 
 Follow the public commands in the [README](../README.md#build), using `tools/build-linux-release.sh` and your own dump path. Update a clean master checkout with `git pull --ff-only origin master`. Do not reset local changes or clear ignored caches just to update. Keep personal convenience scripts outside the checkout and out of Git. The public wrapper exports tracked HEAD, not unrelated working files.
+
+Building locally does not require Actions. If the exact public tools image is unavailable, the wrapper builds tools locally from tracked HEAD. This does not grant publication approval: the public release publisher still requires successful full exact-source validation and verified GHCR image provenance.
 
 Dump mounts are read-only. The wrapper adjusts SELinux labels on the dedicated dump, work and output directories. Never point the dump option at your home root.
 

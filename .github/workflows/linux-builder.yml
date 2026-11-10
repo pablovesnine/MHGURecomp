@@ -106,6 +106,8 @@ jobs:
           echo "path=$context" >> "$GITHUB_OUTPUT"
       - name: Build the tools image once
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: 'false'
         with:
           context: ${{ steps.context.outputs.path }}/tools
           file: ${{ steps.context.outputs.path }}/tools/docker/Dockerfile
@@ -118,7 +120,6 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
           cache-from: type=gha,scope=linux-arm64-tools
-          cache-to: type=gha,mode=max,scope=linux-arm64-tools
       - name: Verify tools access as an unprivileged user
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
