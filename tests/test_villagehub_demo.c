@@ -21,7 +21,7 @@ static void *guest(uint32_t a) {
     for (unsigned i = 0; i < 2; i++)
         if (a == addresses[i]) return globals[i];
     if (a >= addresses[2] && a <= addresses[2] + sizeof events - 8)
-        return events + a - addresses[2];
+        return events + (a - addresses[2]);
     CHECK(a >= SQ && a <= sizeof memory - 8);
     return memory + a;
 }

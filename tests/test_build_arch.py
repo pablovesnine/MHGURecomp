@@ -52,6 +52,35 @@ def load_dist():
 
 
 class BuildTests(unittest.TestCase):
+    def test_0160_hooks_are_mandatory_and_cross_compiled(self):
+        entry = (ROOT / "tools/docker/build.sh").read_text()
+        names = ("hitsync", "chat", "itembar", "combowin", "villagehub-text")
+        self.assertIn("upstream_tests+=(" +
+                      " ".join(f"test-{name}" for name in names) + ")", entry)
+        self.assertIn("MHGU_TEST_LAGCOMP", entry)
+        for name in names:
+            self.assertIn(f"/work/obj-aarch64/{name}-test/test-{name}", entry)
+            self.assertNotIn(f"-f tests/test_{name.replace('-', '_')}.c", entry)
+        result = subprocess.run(
+            ["make", "-n", *(f"test-{name}" for name in names),
+             "HOST_ARCH=x86_64", "SYSROOT=/test/sysroot", "O=/test/objects",
+             "TEST_RUNNER=qemu-aarch64 -L /test/sysroot"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        compiles = [line for line in result.stdout.splitlines()
+                    if line.startswith("clang ")]
+        self.assertEqual(len(compiles), len(names))
+        for name, command in zip(names, compiles):
+            for flag in ("--target=aarch64-linux-gnu", "--sysroot=/test/sysroot",
+                         "-march=armv8-a", "-fsigned-char",
+                         "-fno-strict-aliasing", "-ffp-contract=off"):
+                self.assertIn(flag, command)
+            self.assertIn(f"tests/test_{name.replace('-', '_')}.c", command)
+            self.assertNotIn("-mavx", command)
+            self.assertIn("qemu-aarch64 -L /test/sysroot "
+                          f"/test/objects/{name}-test/test-{name}", result.stdout)
+
     def test_0154_hook_checks_are_required_with_target_abi(self):
         makefile = (ROOT / "Makefile").read_text()
         entry = (ROOT / "tools/docker/build.sh").read_text()

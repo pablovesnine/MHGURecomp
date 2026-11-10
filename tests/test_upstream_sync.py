@@ -254,13 +254,19 @@ class SyncTests(unittest.TestCase):
                      "tests/test_textlayout.c", "tests/test_ldn_direct.c",
                      "tests/test_villagehub_demo.c", "tests/test_fastload.c",
                      "tests/test_hpscale.c", "tests/test_mousecam.c",
-                     "tests/test_0154_portable.py"):
+                     "tests/test_0154_portable.py", "tests/test_hitsync.c",
+                     "tests/test_chat.c", "tests/test_itembar.c",
+                     "tests/test_combowin.c", "tests/test_villagehub_text.c",
+                     "tests/test_0160_portable.py", "tests/test_0160_contracts.py",
+                     "tests/test_0160_fixture.h"):
             self.assertEqual(sync.classify(policy, path), "keep")
         for path in ("runtime/hle/hpscale.c", "runtime/hle/fastload.c",
                      "runtime/hle/mousecam.c", "runtime/interp.c",
                      "runtime/dispatch.c", "runtime/settings_panel.cpp",
                      "runtime/hle/textlayout.c", "runtime/nvn/vulkan/hdr.c",
-                     "tests/test_interp.c",
+                     "tests/test_interp.c", "runtime/net/hitsync.c",
+                     "runtime/hle/chat.c", "runtime/hle/itembar.c",
+                     "runtime/hle/combowin.c",
                      "tests/test_villagehub.c"):
             self.assertEqual(sync.classify(policy, path), "shared", path)
 

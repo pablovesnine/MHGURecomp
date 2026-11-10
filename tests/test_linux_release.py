@@ -383,7 +383,7 @@ class ImageTests(unittest.TestCase):
             ("0.15.2", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout"),
             ("0.15.3", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo"),
             ("0.15.4", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo\ntest-fastload\ntest-hpscale\ntest-mousecam"),
-            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo\ntest-fastload\ntest-hpscale\ntest-mousecam"),
+            ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo\ntest-fastload\ntest-hpscale\ntest-mousecam\ntest-hitsync\ntest-chat\ntest-itembar\ntest-combowin\ntest-villagehub-text"),
         ):
             result = subprocess.run(
                 ["bash", "-euo", "pipefail", "-c",
@@ -399,6 +399,7 @@ class ImageTests(unittest.TestCase):
             for minimum, flag in (
                 ((0, 15, 0), "FORGE_MENU"), ((0, 15, 1), "MOUSE_CAPTURE"),
                 ((0, 15, 2), "TEXT_HDR"), ((0, 15, 3), "DIRECT"),
+                ((0, 16, 0), "LAGCOMP"),
             ):
                 if pin >= minimum:
                     flags.append("-DMHGU_TEST_" + flag)

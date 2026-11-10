@@ -227,6 +227,14 @@ int main() {
     assert(!settings_panel_dirty() && opened);
     tab();
     selected("face");
+#ifdef MHGU_TEST_LAGCOMP
+    // A mod's temporary binding must not replace the player's draft or save.
+    int mod_keys[BIND_KEYS] = {SDL_SCANCODE_F};
+    config_mod_bind(BIND_B, mod_keys);
+    assert(config_mod_bound(BIND_B));
+    assert(config_live_bind(BIND_B, 0) == SDL_SCANCODE_F);
+    assert(config_player_bind(BIND_B, 0) == SDL_SCANCODE_SPACE);
+#endif
     // The Keybinds submenu: a key chosen for B, then a mouse button as its second; the recomp's own keys refused
     press(ImGuiKey_Home);
     down(4);  // (background, combo, mouse, keybinds)
@@ -281,6 +289,14 @@ int main() {
     press(ImGuiKey_GamepadDpadUp);
     selected("save");
     confirm();
+#ifdef MHGU_TEST_LAGCOMP
+    assert(config_player_bind(BIND_B, 0) == SDL_SCANCODE_G);
+    assert(config_player_bind(BIND_B, 1) == KEY_MOUSE + SDL_BUTTON_MIDDLE);
+    assert(config_live_bind(BIND_B, 0) == SDL_SCANCODE_F);
+    assert(config_editable().binds[BIND_B][0] == SDL_SCANCODE_G);
+    config_mod_bind(BIND_B, nullptr);
+    assert(!config_mod_bound(BIND_B));
+#endif
     assert(config_live_bind(BIND_B, 0) == SDL_SCANCODE_G && config_live_bind(BIND_B, 1) == KEY_MOUSE + SDL_BUTTON_MIDDLE);
 #ifdef MHGU_TEST_MOUSE_CAPTURE
     assert(config_live_bind(BIND_X, 0) == KEY_MOUSE + SDL_BUTTON_X1);
@@ -333,6 +349,55 @@ int main() {
     tab();
     tab();
     selected("sync");  // (the Hub heading first)
+#ifdef MHGU_TEST_LAGCOMP
+    assert(config_defaults().lag_compensation == 1);
+    assert(config_editable().lag_compensation == 1 && config_live_lag_compensation() == 1);
+    down();
+    selected("lagcomp");  // Misc, not Network.
+    confirm();
+    assert(settings_panel_dirty() && config_live_lag_compensation() == 1);
+    press(ImGuiKey_End);
+    press(ImGuiKey_GamepadDpadUp);
+    selected("save");
+    confirm();
+    assert(!settings_panel_dirty() && !config_live_lag_compensation());
+    assert(!config_editable().lag_compensation && !config_restart_key("LagCompensation"));
+    {
+        std::ifstream in("obj/settings-test/panel-settings.ini");
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        assert(text.find("LagCompensation = Off") != std::string::npos);
+    }
+    press(ImGuiKey_Home);
+    down();
+    selected("lagcomp");
+    confirm();
+    assert(settings_panel_dirty() && !config_live_lag_compensation());
+    back();
+    selected("dialog.cancel");
+    down(2);
+    confirm();  // Discard the unsaved toggle.
+    assert(!opened && !config_editable().lag_compensation);
+    frame();
+    opened = true;
+    idle();
+    selected("sync");
+    assert(!settings_panel_dirty() && !config_live_lag_compensation());
+    press(ImGuiKey_End);
+    selected("reset");
+    confirm();
+    selected("dialog.cancel");
+    down();
+    confirm();
+    assert(settings_panel_dirty() && !config_live_lag_compensation());
+    press(ImGuiKey_End);
+    press(ImGuiKey_GamepadDpadUp);
+    selected("save");
+    confirm();
+    assert(!settings_panel_dirty() && config_live_lag_compensation() == 1);
+    press(ImGuiKey_Home);
+    selected("sync");
+    down();
+#endif
     down(3);
     selected("hp.0");
     tab();
@@ -655,6 +720,9 @@ int main() {
     press(ImGuiKey_GamepadL1);
     press(ImGuiKey_GamepadL1);  // (Cheats, Mods, Misc)
     selected("sync");  // (the Hub heading first)
+#ifdef MHGU_TEST_LAGCOMP
+    down();
+#endif
     down(3);
     selected("hp.0");
     down(5);

@@ -12,7 +12,7 @@ Use L/R to cycle tabs, or click a tab label.
 | Graphics & Audio | Volume, background mute, FPS, VSync, anti-aliasing, draw distance and FSR. |
 | Controls | Face-button mapping, background input, combo input window, mouse sensitivity and keyboard/mouse keybinds. |
 | Network | Host port, search hosts, hub server, matchmaking key, hub check, direct connections (0.15.3) and Discord presence. |
-| Misc | Hub rules, monster HP scaling and per-quest overrides. |
+| Misc | Hub rules, experimental lag compensation (0.16.0), monster HP scaling and per-quest overrides. |
 | Mods | Enable and order installed mods, review file conflicts, and open Forge in 0.15.0. |
 | Cheats | Toggle cheats and add a cheat. |
 | Menu Options | Language, theme, scale, panel placement, host confirmation button, button icons, save folder, exit policy, bonus content, Restart and Exit game. |
@@ -123,7 +123,7 @@ Key = my-private-group
 
 The hub relays internet connections, so players do not need to forward their own game ports. For direct internet play without a hub, the host must be reachable. Forward the host's chosen game port for TCP and UDP, then enter its public address in each joining player's **Search hosts** field. LAN discovery does not need an internet hub.
 
-I do not include a standalone dedicated hub-server product in this repository or ARM64 package. To run the native hub service separately, follow the [upstream 0.15.4 server instructions](https://github.com/morerokk/MHGURecomp/tree/d00c21323612b919a2c3fe279c0a8c24ff3347d1/server). That service is distinct from the optional embedded emulator servers in 0.15.1. The native server operator needs to make the chosen hub port reachable for TCP and UDP. That is separate from players forwarding game ports. The client and server protocols must be compatible. I have not tested a self-hosted server deployment on the ARM64 device.
+I do not include a standalone dedicated hub-server product in this repository or ARM64 package. To run the native hub service separately, follow the [upstream 0.16.0 server instructions](https://github.com/morerokk/MHGURecomp/tree/dc26e6d9a22afbedc1138fd07e94f3e3c55efed3/server). That service is distinct from the optional embedded emulator servers in 0.15.1. The native server operator needs to make the chosen hub port reachable for TCP and UDP. That is separate from players forwarding game ports. The client and server protocols must be compatible. I have not tested a self-hosted server deployment on the ARM64 device.
 
 ### Direct connections
 
@@ -138,6 +138,30 @@ Direct UDP may fail behind symmetric NAT, CGNAT or a firewall. The client falls 
 I found one upstream recovery limit in a synthetic probe: after a direct-path outage, three acknowledgements ten seconds apart still accumulate and re-enable direct mode. The counter does not enforce the documented consecutive-answer behavior. I retain that code without claiming it prevents path flapping.
 
 The Village change in this version releases demo-dependent spawn slots once a hunter reaches a matching event area during a Village quest in a session. I test the hook's gates, one-shot release, between-quest reset and original-call ordering with synthetic memory, retaining the supply-box trace fix. I have not reproduced or resolved a softlock in a real hunt on the device.
+
+### Lag compensation
+
+From 0.16.0, **Misc > Lag compensation (experimental)** maps to `[Multiplayer] LagCompensation`, default On. **Save** publishes the setting live without restarting; cancelling a draft leaves it unchanged. `MHGU_LAGCOMP` is a numeric startup override, not a live environment switch. I retain the upstream default, not a claim that it is proven correct in a hunt.
+
+The ordinary hit hook is active only with the setting enabled, a network session up and no emulator crossplay. A local hunter reports supported hits to the monster's simulation owner. That owner suppresses its local copy only while the reporting hunter has a fresh enabled Hello; bow/bowgun shots also require the shot capability. Old or disabled participants retain the original hit path. Supported shots are selected by exact projectile classes; this does not cover every weapon effect. The generated INI help still says bows and bowguns are unaffected, but that comment is stale in 0.16.0.
+
+I found a lifecycle gap with synthetic memory: queued reports can still apply after network loss or transition to crossplay because the owner-drain gate omits those two conditions. Disconnect and repeated initialization do not clear Hellos, capabilities or the queue. Expiry and queue bounds are not a session reset. Turning LagCompensation Off prevents the owner from applying matching queued reports, but it is not a general cleanup or security fix.
+
+The receiver bounds message length, slot, monster ID and damage fields, but trusts the slot in the payload. It does not authenticate the sender-slot relationship, deduplicate reports or enforce sequence order. Duplicates can apply twice; arrival order resolves equal-rank reactions. Some fields are not validated, and single-thread tests do not establish concurrent safety. I keep these upstream limitations visible rather than treating the option as replay protection or a multiplayer security boundary. I have not measured latency, validated damage/KO/part behavior, or tested real native/emulator interoperability.
+
+## 0.16.0 controls, chat and Village quests
+
+The item wheel now has a separate Prowler handler. I check its mode gates, queued-notch consumption, expiry and original-call ordering, not the game's pouch selection or physical wheel feel. Lenient ComboInputWindow also adjusts real presses and can wait up to one 30-FPS update for a third button at higher frame rates; Strict retains the original per-update behavior. The new generator hooks require regenerating the local game library from the licensed dump, not reusing an old generation stamp. I have not tested Better Inputs or weapon combos in-game.
+
+Forge plugins can temporarily override a keybind row without replacing the player's saved INI keys. The keybind menu shows the mod's override, and the saved player keys return when the mod releases it. A first-key capture API includes mouse buttons and wheel events, even when an overlay consumes them. These are source/compiler and synthetic-helper contracts, not validation of a real plugin.
+
+Chat still requests at most 120 codepoints and sends at most 119 UTF-8 text bytes plus NUL per game payload. The new code packs wider rows, up to five per payload, and can split one composition across messages. I test valid UTF-8 boundaries and name suppression on continuation rows, not font rendering or real network delivery. Separate sanitizer probes expose inherited hardening limits for malformed truncated UTF-8 and extreme integer wheel steps; ordinary input tests do not establish safety for arbitrary bytes or integers.
+
+Village quest lists now reload after returning to the rank/star menu. Chinese game-language modes acquire the Village text archive for relevant quest lookups, with timeout, null and release handling. I preserve the bounded supply trace and spawn-demo hook in this protected file. Synthetic resource stubs do not validate the installed archive, translated game text or actual quest transitions.
+
+The renderer also changes fragment-shader handling of zero multiplied by a reciprocal texture alpha, plus HUD grouping and preview anchoring. I check portable types and source/compiler contracts, not GPU output, HDR correctness or a performance improvement.
+
+Two synthetic source probes retain known limits: a backward branch can miss reciprocal-alpha tracking learned later in the translator's single pass, and stacked HUD groups can update their matrices without updating the earlier group's scissor-prediction cache. These CPU-side inconsistencies are not proof of a visible defect in a particular game scene, and I have not fixed or validated them on hardware.
 
 ### Experimental emulator crossplay
 

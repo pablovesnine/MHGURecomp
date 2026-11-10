@@ -48,13 +48,13 @@ def linux_tab_labels(declaration):
 
 
 class ForkDocumentationTests(unittest.TestCase):
-    def test_0154_source_package_and_validation_boundaries(self):
+    def test_0160_source_package_and_validation_boundaries(self):
         readme = (ROOT / "README.md").read_text()
         guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
         maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
-        self.assertIn("targets upstream **0.15.4**", readme)
-        self.assertIn("package remains **0.15.3**", readme)
-        self.assertIn("/releases/tag/0.15.3", readme)
+        self.assertIn("targets upstream **0.16.0**", readme)
+        self.assertIn("package remains **0.15.4**", readme)
+        self.assertIn("/releases/tag/0.15.4", readme)
         self.assertIn("python3 tools/publish-linux-release.py --dist dist", readme)
         for text in ("MHGU_NO_FASTLOAD", "part HP", "next refill",
                      "bow", "not measured"):
@@ -84,6 +84,15 @@ class ForkDocumentationTests(unittest.TestCase):
                      "20:00 UTC", "have not verified", "CGNAT", "0.15.3"):
             self.assertIn(text, guide)
         for text in ("test-ldn-direct", "test-villagehub-demo", "MHGU_TEST_DIRECT"):
+            self.assertIn(text, maintaining)
+        for text in ("Misc > Lag compensation (experimental)",
+                     "LagCompensation", "default On", "stale",
+                     "deduplicate", "network loss", "120 codepoints",
+                     "119 UTF-8", "malformed", "regenerating"):
+            self.assertIn(text, guide)
+        for text in ("test-hitsync", "test-chat", "test-itembar", "test-combowin",
+                     "test-villagehub-text", "MHGU_TEST_LAGCOMP",
+                     "test_0160_portable.py", "test_0160_contracts.py"):
             self.assertIn(text, maintaining)
 
     def test_tab_parser_preserves_all_linux_tabs_and_excludes_other_targets(self):
@@ -228,7 +237,7 @@ class ForkDocumentationTests(unittest.TestCase):
         self.assertIn("not include a dedicated hub server", readme)
         self.assertIn(
             "https://github.com/morerokk/MHGURecomp/tree/"
-            "d00c21323612b919a2c3fe279c0a8c24ff3347d1/server", guide)
+            "dc26e6d9a22afbedc1138fd07e94f3e3c55efed3/server", guide)
 
     def test_0143_module_and_live_setting_boundaries(self):
         guide = (ROOT / "docs/ENGINE-MODULES.md").read_text()

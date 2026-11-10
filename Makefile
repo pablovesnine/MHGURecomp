@@ -600,6 +600,33 @@ test-mousecam:
 	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) tests/test_mousecam.c -pthread -lm -o $(O)/mousecam-test/test-mousecam
 	$(TEST_RUNNER) $(O)/mousecam-test/test-mousecam
 
+# Production 0.16.0 hooks; all guest memory and external effects are synthetic.
+.PHONY: test-hitsync test-chat test-itembar test-combowin test-villagehub-text
+test-hitsync:
+	@mkdir -p $(O)/hitsync-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_hitsync.c -pthread -lm -o $(O)/hitsync-test/test-hitsync
+	$(TEST_RUNNER) $(O)/hitsync-test/test-hitsync
+
+test-chat:
+	@mkdir -p $(O)/chat-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_chat.c -pthread -lm -o $(O)/chat-test/test-chat
+	$(TEST_RUNNER) $(O)/chat-test/test-chat
+
+test-itembar:
+	@mkdir -p $(O)/itembar-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_itembar.c -pthread -lm -o $(O)/itembar-test/test-itembar
+	$(TEST_RUNNER) $(O)/itembar-test/test-itembar
+
+test-combowin:
+	@mkdir -p $(O)/combowin-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_combowin.c -pthread -lm -o $(O)/combowin-test/test-combowin
+	$(TEST_RUNNER) $(O)/combowin-test/test-combowin
+
+test-villagehub-text:
+	@mkdir -p $(O)/villagehub-text-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_villagehub_text.c -pthread -lm -o $(O)/villagehub-text-test/test-villagehub-text
+	$(TEST_RUNNER) $(O)/villagehub-text-test/test-villagehub-text
+
 # Translation coverage for both host-menu languages; no game files required.
 .PHONY: test-settings-locale
 test-settings-locale:
