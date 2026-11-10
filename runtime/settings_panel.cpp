@@ -344,6 +344,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(face_buttons);
     SAME(ldn_port);
     SAME(sync_small_monsters);
+    SAME(lag_compensation);
     SAME(ldn_direct);
     SAME(bonus_content);
     SAME(village_in_hub);
@@ -707,7 +708,7 @@ const char *key_use(int code, int skip) {
         return tr(use);
     for (int i = 0; i < BINDS; i++)
         for (int k = 0; k < BIND_KEYS; k++)
-            if (i != skip && s.draft.binds[i][k] == code)
+            if (i != skip && (s.draft.binds[i][k] == code || (config_mod_bound(i) && config_live_bind(i, k) == code)))
                 return tr(bind_titles[i]);
     if (skip >= 0 && code == (int)SDL_GetScancodeFromName(s.draft.chat_key))
         return tr("Chat key");
@@ -759,6 +760,15 @@ void keybind_rows(std::vector<Row> &r) {
         }
         if (row.value.empty())
             row.value = tr("None");
+        if (config_mod_bound(i)) { // (these are what work for now; the row's own count again once the mod gives it back)
+            int live[BIND_KEYS];
+            char now[128];
+            for (int k = 0; k < BIND_KEYS; k++)
+                live[k] = config_live_bind(i, k);
+            config_format_keys(live, now, sizeof now);
+            row.value += std::string(" (") + tr("set by a mod:") + " " + now + ")";
+            row.warn = true;
+        }
         Row copy = row;
         row.menu = true;
         row.activate = [copy, i]() {
@@ -855,6 +865,7 @@ void reset_section() {
         break;
     case 4:
         c.sync_small_monsters = f.sync_small_monsters;
+        c.lag_compensation = f.lag_compensation;
         c.village_in_hub = f.village_in_hub;
         c.share_urgent = f.share_urgent;
         c.hp = f.hp;
@@ -1292,6 +1303,7 @@ std::vector<Row> main_rows() {
             tr("HP multipliers for single quests, by their quest ID: in those quests they are used instead of the ones above.");
         header(r, "hub.header", tr("Hub"));
         add_bool(r, "sync", "Sync small monsters", &c.sync_small_monsters, ini("SyncSmallMonsters"));
+        add_bool(r, "lagcomp", "Lag compensation (experimental)", &c.lag_compensation, ini("LagCompensation"));
         add_bool(r, "village", "Village quests in Hub", &c.village_in_hub, ini("VillageQuestsInHub"));
         add_bool(r, "urgent", "Urgent quests count for all", &c.share_urgent, ini("ShareUrgentCredit"));
         header(r, "hp.header", tr("Monster HP Scaling"));

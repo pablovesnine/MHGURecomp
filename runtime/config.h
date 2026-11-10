@@ -51,6 +51,7 @@ typedef struct {
     int ldn_port;             // local play: the port a hosted hub listens on (TCP; UDP for LAN search)
     char ldn_join[256];       // local play: hosts to search besides the LAN (host[:port], comma separated)
     int sync_small_monsters;  // multiplayer: small monsters synced like large ones (runtime/net/emsync.c)
+    int lag_compensation;     // multiplayer: melee and bow/bowgun hits count as the hunter saw them (runtime/net/hitsync.c)
     int bonus_content;        // free downloads copied from a donor save into saves without any (runtime/services/bonus.c)
     int village_in_hub;       // L / R at the Hub's / Pub's quest counter switch to Village quests (runtime/hle/villagehub.c)
     int share_urgent;         // an unlocked Urgent quest someone else posted counts when cleared (runtime/hle/urgentcredit.c)
@@ -190,6 +191,8 @@ bool config_help(const char *key, char *buf, size_t size);  // what the default 
 // "" for one that has none), and the code a name is for (0: none of them)
 const char *config_key_name(int code);
 int config_key_code(const char *name);
+bool config_parse_keys(const char *value, int keys[BIND_KEYS]);  // a [Keybinds] value as the file has it ("" or None: no keys)
+void config_format_keys(const int keys[BIND_KEYS], char *buf, size_t size);  // as the file writes it
 const ConfigSetting *config_bind_setting(int bind);  // the [Keybinds] row of BIND_*
 
 // File values, before environment overrides and automatic resolution are resolved.
@@ -213,7 +216,12 @@ int config_live_menu_confirm(void);
 int config_live_background_input(void);
 int config_live_combo_window(void);
 int config_live_chat_key(void);  // [Controls] ChatKey as an SDL scancode (0: none)
-int config_live_bind(int bind, int slot);  // [Keybinds]: one of BIND_*'s keys (Config.binds)
+int config_live_bind(int bind, int slot);  // [Keybinds]: one of BIND_*'s keys (Config.binds, or a mod's for now)
+// A mod's keys for BIND_* for now (runtime/forge.c forge_input_setKeybind), over the settings' own; NULL: theirs again.
+// Not saved: mhgurecomp.ini and the settings menu keep the player's.
+void config_mod_bind(int bind, const int keys[BIND_KEYS]);
+bool config_mod_bound(int bind);  // a mod has the row for now: config_live_bind is its keys
+int config_player_bind(int bind, int slot);  // the settings' own (what config_live_bind has with no mod's)
 int config_live_fxaa_mode(void);
 int config_live_smooth_gradients(void);
 int config_live_fix_kerning(void);  // [Graphics] FixKerning, read as each text is set (game threads)
@@ -244,6 +252,7 @@ int config_live_ldn_port(void);         // [Multiplayer] Port: the next hub host
 void config_live_ldn_join(char *join, size_t size);  // [Multiplayer] Join: the next search (net/ldn.c)
 int config_live_ldn_direct(void);  // [Multiplayer] Direct (net/ldn.c: for the next player link)
 int config_live_sync_small_monsters(void);  // [Multiplayer] SyncSmallMonsters (net/emsync.c)
+int config_live_lag_compensation(void);  // [Multiplayer] LagCompensation (net/hitsync.c)
 int config_live_bonus_content(void);    // [Bonus Content] BonusContent: each time the game opens a save (services/bonus.c)
 int config_live_discord(void);         // [Discord] RichPresence
 int config_live_discord_hunter(void);  // [Discord] ShowHunter

@@ -103,6 +103,7 @@
     .ldn_key = "",                                                                                  \
     .ldn_direct = 1,                                                                                \
     .sync_small_monsters = 1,                                                                       \
+    .lag_compensation = 1,                                                                          \
     .share_urgent = 1,                                                                              \
     /* [Monster HP, Village Quests] */                                                              \
     .hp = {{1, 1, 1, 1}, 2},                                                                        \
@@ -427,6 +428,11 @@ static const char DEFAULT_INI[] =
     "; Sync small monsters between players in multiplayer. Everyone in the hunt should use the same setting.\n"
     "; Default: On\n"
     "SyncSmallMonsters = On\n"
+    "\n"
+    "; Experimental. Your melee hits count as you saw them land, even if your hunter missed on the screen of the player\n"
+    "; running the monster. Works when that player has it on too, and has no effect otherwise. Bows and bowguns are not affected.\n"
+    "; Default: On\n"
+    "LagCompensation = On\n"
     "\n"
     "; Clearing an Urgent quest posted by someone else also counts for you, if you have unlocked it yourself. The\n"
     "; original game only counts it for the hunter who posted it. This only changes your own save, the others in the\n"
@@ -757,6 +763,7 @@ const ConfigSetting g_settings[] = {
     {"Multiplayer", "Key", SET_TEXT, F(ldn_key), sizeof g_config.ldn_key, 0, 0, NULL, NULL, false, ERR_SERVER},
     ON_OFF("Multiplayer", "Direct", ldn_direct, false),
     ON_OFF("Multiplayer", "SyncSmallMonsters", sync_small_monsters, false),
+    ON_OFF("Multiplayer", "LagCompensation", lag_compensation, false),
     ON_OFF("Multiplayer", "ShareUrgentCredit", share_urgent, false),
     {"Monster HP", "1Player|1Players", SET_FACTOR, F(hp.scale[0]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
     {"Monster HP", "2Players|2Player", SET_FACTOR, F(hp.scale[1]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, false, ERR_HP},
@@ -879,6 +886,29 @@ static bool parse_bool(const char *v, int *out) {
     return true;
 }
 
+bool config_parse_keys(const char *value, int keys[BIND_KEYS]) {  // names separated by ',' ("Return, Keypad Enter"), or None
+    char v[256];
+    snprintf(v, sizeof v, "%s", value);
+    squash(v);
+    int got[BIND_KEYS] = {0}, n = 0;
+    if (strcmp(v, "none") && *v)
+        for (const char *p = value;; p++) {
+            size_t len = strcspn(p, ",");
+            char one[64];
+            snprintf(one, sizeof one, "%.*s", (int)len, p);
+            char *a = one, *b = one + strlen(one);
+            while (isspace((unsigned char)*a)) a++;
+            while (b > a && isspace((unsigned char)b[-1])) *--b = 0;
+            int code = config_key_code(a);
+            if (!code || !bind_key_valid(code) || n == BIND_KEYS) return false;
+            if (!n || got[0] != code) got[n++] = code;
+            p += len;
+            if (!*p) break;
+        }
+    memcpy(keys, got, sizeof got);
+    return true;
+}
+
 bool config_parse(const ConfigSetting *s, const char *value, Config *c) {
     char v[256], *end;
     snprintf(v, sizeof v, "%s", value);
@@ -917,27 +947,17 @@ bool config_parse(const ConfigSetting *s, const char *value, Config *c) {
     case SET_TEXT:  // (as written: host names keep their dashes)
         snprintf((char *)c + s->field, s->field2, "%s", value);
         return true;
-    case SET_KEYS: {  // names separated by ',' ("Return, Keypad Enter"), or None
-        int keys[BIND_KEYS] = {0}, n = 0;
-        if (strcmp(v, "none") && *v)
-            for (const char *p = value;; p++) {
-                size_t len = strcspn(p, ",");
-                char one[64];
-                snprintf(one, sizeof one, "%.*s", (int)len, p);
-                char *a = one, *b = one + strlen(one);
-                while (isspace((unsigned char)*a)) a++;
-                while (b > a && isspace((unsigned char)b[-1])) *--b = 0;
-                int code = config_key_code(a);
-                if (!code || !bind_key_valid(code) || n == BIND_KEYS) return false;
-                if (!n || keys[0] != code) keys[n++] = code;
-                p += len;
-                if (!*p) break;
-            }
-        memcpy(field_int(c, s->field), keys, sizeof keys);
-        return true;
-    }
+    case SET_KEYS: return config_parse_keys(value, field_int(c, s->field));
     }
     return false;
+}
+
+void config_format_keys(const int keys[BIND_KEYS], char *buf, size_t size) {
+    size_t n = 0;
+    if (size) *buf = 0;
+    for (int i = 0; i < BIND_KEYS; i++)
+        if (keys[i] && n < size) n += (size_t)snprintf(buf + n, size - n, "%s%s", n ? ", " : "", config_key_name(keys[i]));
+    if (!n) snprintf(buf, size, "None");
 }
 
 void config_format(const ConfigSetting *s, const Config *c, char *buf, size_t size) {
@@ -963,15 +983,7 @@ void config_format(const ConfigSetting *s, const Config *c, char *buf, size_t si
         else snprintf(buf, size, "%g", (double)fv);
         break;
     case SET_TEXT: snprintf(buf, size, "%s", (const char *)c + s->field); break;
-    case SET_KEYS: {
-        const int *k = field_int(c, s->field);
-        size_t n = 0;
-        if (size) *buf = 0;
-        for (int i = 0; i < BIND_KEYS; i++)
-            if (k[i] && n < size) n += (size_t)snprintf(buf + n, size - n, "%s%s", n ? ", " : "", config_key_name(k[i]));
-        if (!n) snprintf(buf, size, "None");
-        break;
-    }
+    case SET_KEYS: config_format_keys(field_int(c, s->field), buf, size); break;
     }
 }
 
@@ -1213,6 +1225,7 @@ void config_load(void) {
     if ((e = getenv("MHGU_PAD_POSITIONAL"))) g_config.face_buttons = atoi(e) ? FACE_POSITION : FACE_LABEL;
     if ((e = getenv("MHGU_LDN_PORT")) && atoi(e) > 0) g_config.ldn_port = atoi(e);
     if ((e = getenv("MHGU_SYNC_ZAKO"))) g_config.sync_small_monsters = atoi(e) != 0;
+    if ((e = getenv("MHGU_LAGCOMP"))) g_config.lag_compensation = atoi(e) != 0;
     if ((e = getenv("MHGU_LDN_JOIN"))) snprintf(g_config.ldn_join, sizeof g_config.ldn_join, "%s", e);
     if ((e = getenv("MHGU_LDN_SERVER"))) snprintf(g_config.ldn_server, sizeof g_config.ldn_server, "%s", e);
     if ((e = getenv("MHGU_LDN_KEY"))) snprintf(g_config.ldn_key, sizeof g_config.ldn_key, "%s", e);

@@ -59,6 +59,7 @@ static SDL_AtomicInt live_binds[BINDS][BIND_KEYS];
 // [Multiplayer]
 static SDL_AtomicInt live_ldn_port;
 static SDL_AtomicInt live_sync_zako;
+static SDL_AtomicInt live_lagcomp;
 static SDL_AtomicInt live_ldn_direct;
 static SDL_AtomicInt live_share_urgent;
 // [Monster HP, Village Quests]
@@ -146,6 +147,7 @@ static void publish_live(const Config *c, bool all) {
     }
     if (all || c->ldn_port != saved.ldn_port) SDL_SetAtomicInt(&live_ldn_port, c->ldn_port);
     if (all || c->sync_small_monsters != saved.sync_small_monsters) SDL_SetAtomicInt(&live_sync_zako, c->sync_small_monsters);
+    if (all || c->lag_compensation != saved.lag_compensation) SDL_SetAtomicInt(&live_lagcomp, c->lag_compensation);
     if (all || c->ldn_direct != saved.ldn_direct) SDL_SetAtomicInt(&live_ldn_direct, c->ldn_direct);
     if (all || c->bonus_content != saved.bonus_content) SDL_SetAtomicInt(&live_bonus, c->bonus_content);
 }
@@ -210,6 +212,7 @@ float config_live_fsr_reactive(void) { return get_float(&live_fsr_reactive); }
 int config_live_village_in_hub(void) { return SDL_GetAtomicInt(&live_village); }
 int config_live_ldn_port(void) { return SDL_GetAtomicInt(&live_ldn_port); }
 int config_live_sync_small_monsters(void) { return SDL_GetAtomicInt(&live_sync_zako); }
+int config_live_lag_compensation(void) { return SDL_GetAtomicInt(&live_lagcomp); }
 int config_live_ldn_direct(void) { return SDL_GetAtomicInt(&live_ldn_direct); }
 int config_live_bonus_content(void) { return SDL_GetAtomicInt(&live_bonus); }
 void config_live_ldn_join(char *join, size_t size) {
@@ -231,7 +234,19 @@ float config_live_hp_village(void) {
 int config_live_discord(void) { return SDL_GetAtomicInt(&live_discord); }
 int config_live_discord_hunter(void) { return SDL_GetAtomicInt(&live_discord_hunter); }
 int config_live_share_urgent(void) { return SDL_GetAtomicInt(&live_share_urgent); }
-int config_live_bind(int bind, int slot) { return SDL_GetAtomicInt(&live_binds[bind][slot]); }
+// [Keybinds] rows a mod set for now (mod_bind_set): its keys, over the settings' while set
+static SDL_AtomicInt mod_binds[BINDS][BIND_KEYS], mod_bind_set[BINDS];
+void config_mod_bind(int bind, const int keys[BIND_KEYS]) {
+    if (bind < 0 || bind >= BINDS) return;
+    if (!keys) { SDL_SetAtomicInt(&mod_bind_set[bind], 0); return; }
+    for (int k = 0; k < BIND_KEYS; k++) SDL_SetAtomicInt(&mod_binds[bind][k], keys[k]);
+    SDL_SetAtomicInt(&mod_bind_set[bind], 1);
+}
+int config_live_bind(int bind, int slot) {
+    return SDL_GetAtomicInt(&(SDL_GetAtomicInt(&mod_bind_set[bind]) ? mod_binds : live_binds)[bind][slot]);
+}
+bool config_mod_bound(int bind) { return SDL_GetAtomicInt(&mod_bind_set[bind]) != 0; }
+int config_player_bind(int bind, int slot) { return SDL_GetAtomicInt(&live_binds[bind][slot]); }
 void config_live_ldn(char *server, size_t server_size, char *key, size_t key_size) {
     SDL_LockSpinlock(&live_ldn_lock);
     if (server) SDL_strlcpy(server, live_ldn_server, server_size);
