@@ -601,11 +601,24 @@ test-mousecam:
 	$(TEST_RUNNER) $(O)/mousecam-test/test-mousecam
 
 # Production 0.16.0 hooks; all guest memory and external effects are synthetic.
+# Select by tracked source pin, including direct developer make invocations.
+HITSYNC_TEST_FLAGS ?= -DMHGU_TEST_HITSYNC_CROSSPLAY=$(shell pin=$$(awk -F '\t' '$$1 == "version" {print $$2}' .github/maintenance/upstream-release.tsv); printf '%s\n' 0.16.1 "$$pin" | sort -V -C && echo 1 || echo 0)
 .PHONY: test-hitsync test-chat test-itembar test-combowin test-villagehub-text
 test-hitsync:
 	@mkdir -p $(O)/hitsync-test
-	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_hitsync.c -pthread -lm -o $(O)/hitsync-test/test-hitsync
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) $(HITSYNC_TEST_FLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_hitsync.c -pthread -lm -o $(O)/hitsync-test/test-hitsync
 	$(TEST_RUNNER) $(O)/hitsync-test/test-hitsync
+
+.PHONY: test-hitsync-vsock test-title-exit
+test-hitsync-vsock:
+	@mkdir -p $(O)/hitsync-vsock-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) $(HITSYNC_TEST_FLAGS) -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_hitsync_vsock.c -pthread -lm -o $(O)/hitsync-vsock-test/test-hitsync-vsock
+	$(TEST_RUNNER) $(O)/hitsync-vsock-test/test-hitsync-vsock
+
+test-title-exit:
+	@mkdir -p $(O)/title-exit-test
+	$(CC) $(TARGET_FLAGS) -fuse-ld=lld $(HOOK_TEST_FLAGS) $(LIB_INC) -ffunction-sections -fdata-sections -Wl,--gc-sections tests/test_title_exit.c -pthread -lm -o $(O)/title-exit-test/test-title-exit
+	$(TEST_RUNNER) $(O)/title-exit-test/test-title-exit
 
 test-chat:
 	@mkdir -p $(O)/chat-test

@@ -384,6 +384,8 @@ class ImageTests(unittest.TestCase):
             ("0.15.3", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo"),
             ("0.15.4", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo\ntest-fastload\ntest-hpscale\ntest-mousecam"),
             ("0.16.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo\ntest-fastload\ntest-hpscale\ntest-mousecam\ntest-hitsync\ntest-chat\ntest-itembar\ntest-combowin\ntest-villagehub-text"),
+            ("0.16.1", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo\ntest-fastload\ntest-hpscale\ntest-mousecam\ntest-hitsync\ntest-chat\ntest-itembar\ntest-combowin\ntest-villagehub-text\ntest-hitsync-vsock\ntest-title-exit"),
+            ("0.17.0", "test-engine-modules\ntest-cheats\ntest-interp\ntest-villagehub\ntest-crossplay-bins\ntest-textlayout\ntest-ldn-direct\ntest-villagehub-demo\ntest-fastload\ntest-hpscale\ntest-mousecam\ntest-hitsync\ntest-chat\ntest-itembar\ntest-combowin\ntest-villagehub-text\ntest-hitsync-vsock\ntest-title-exit"),
         ):
             result = subprocess.run(
                 ["bash", "-euo", "pipefail", "-c",
@@ -404,6 +406,9 @@ class ImageTests(unittest.TestCase):
                 if pin >= minimum:
                     flags.append("-DMHGU_TEST_" + flag)
                     expected_flags.append("PANEL_TEST_FLAGS=" + " ".join(flags))
+            if pin >= (0, 16, 1):
+                expected_flags.append(
+                    "HITSYNC_TEST_FLAGS=-DMHGU_TEST_HITSYNC_CROSSPLAY=1")
             self.assertEqual(result.stderr.strip(), "\n".join(expected_flags), version)
         self.assertIn('test-arcmerge "${upstream_tests[@]}"', script)
         self.assertIn(

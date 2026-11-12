@@ -12,16 +12,19 @@ STATE = dict(line.split("\t", 1) for line in
              (ROOT / ".github/maintenance/upstream-release.tsv")
              .read_text().splitlines())
 ENABLED = tuple(map(int, STATE["version"].split("."))) >= (0, 16, 0)
+CROSSPLAY = tuple(map(int, STATE["version"].split("."))) >= (0, 16, 1)
 
 
 def build_fixture(name, target, extra=()):
+    flags = (["-DMHGU_TEST_HITSYNC_CROSSPLAY=" + str(int(CROSSPLAY))]
+             if name in ("hitsync", "hitsync_vsock") else [])
     return subprocess.run(
         ["clang", "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
          "-fsigned-char", "-fno-strict-aliasing", "-ffp-contract=off",
          "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
          "-fno-omit-frame-pointer", "-ffunction-sections", "-fdata-sections",
          "-Wl,--gc-sections", "-I" + str(ROOT / "runtime"),
-         "-I" + str(ROOT / "runtime/hle"), *extra,
+         "-I" + str(ROOT / "runtime/hle"), *flags, *extra,
          str(ROOT / f"tests/test_{name}.c"), "-pthread", "-lm", "-o", str(target)],
         capture_output=True, text=True,
     )
@@ -105,6 +108,52 @@ int main(void) {
         compiler_check(prefix + selected["main", 0x47ca38][1] +
                        selected["main", 0x47cc58][1] +
                        "\nCHECK(phase == 3 && c->r[1] == memory); return 0;\n}\n")
+
+
+@unittest.skipUnless(CROSSPLAY, "Requires source pin 0.16.1 or later")
+class Crossplay0161Tests(unittest.TestCase):
+    def test_actual_vsock_routing_native_sanitizers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "vsock"
+            for flags in ((), ("-DNDEBUG",)):
+                result = build_fixture("hitsync_vsock", binary, flags)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                result = subprocess.run([str(binary)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_crossplay_sender_and_echo_and_dispatch_mutations_rejected(self):
+        cases = (
+            ("hitsync", "hitsync", "MHGU_HITSYNC_SOURCE",
+             "UDP_PORT, UDP_PORT, VPROTO_UDP",
+             "UDP_PORT + 1, UDP_PORT, VPROTO_UDP",
+             "p->src_port == 47318 && p->dst_port == 47318"),
+            ("hitsync", "hitsync", "MHGU_HITSYNC_SOURCE",
+             "h.slot < 4 && (int)h.slot != local_slot()", "h.slot < 4",
+             "g_hello[1] == (MHGU_TEST_HITSYNC_CROSSPLAY ? 0 : clock_ns)"),
+            ("hitsync", "hitsync", "MHGU_HITSYNC_SOURCE",
+             " || (int)r.slot == local_slot()", "",
+             "g_nq == (MHGU_TEST_HITSYNC_CROSSPLAY ? 0 : 1)"),
+            ("hitsync_vsock", "vsock", "MHGU_VSOCK_SOURCE",
+             "if (p->proto == VPROTO_UDP && p->dst_port == HITSYNC_UDP_PORT)",
+             "if (false)",
+             "nreceived == before + (hit && MHGU_TEST_HITSYNC_CROSSPLAY)"),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for fixture, leaf, define, old, new, diagnostic in cases:
+                with self.subTest(mutation=old):
+                    source = (ROOT / f"runtime/net/{leaf}.c").read_text()
+                    self.assertEqual(source.count(old), 1)
+                    mutated = Path(tmp) / f"{leaf}.c"
+                    mutated.write_text(source.replace(old, new, 1))
+                    binary = Path(tmp) / "mutant"
+                    result = build_fixture(fixture, binary, (
+                        "-DNDEBUG", "-I" + str(ROOT / "runtime/net"),
+                        "-D" + define + '="' + str(mutated) + '"'))
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    result = subprocess.run([str(binary)],
+                                            capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(diagnostic, result.stderr)
 
 
 if __name__ == "__main__":

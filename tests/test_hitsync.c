@@ -10,6 +10,14 @@
 #include <string.h>
 #include "../runtime/hle.h"
 
+// The build selects this from the exact source pin, never from host architecture.
+#ifndef MHGU_TEST_HITSYNC_CROSSPLAY
+#error "define MHGU_TEST_HITSYNC_CROSSPLAY=0 (0.16.0) or =1 (>=0.16.1)"
+#endif
+#if MHGU_TEST_HITSYNC_CROSSPLAY != 0 && MHGU_TEST_HITSYNC_CROSSPLAY != 1
+#error "MHGU_TEST_HITSYNC_CROSSPLAY must be 0 or 1"
+#endif
+
 static unsigned checks, groups;
 #define CHECK(x) do { ++checks; if (!(x)) { \
     fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); \
@@ -48,7 +56,10 @@ static void wr32(uint32_t a, uint32_t x) { memcpy(memory(a, 4), &x, 4); }
 #define ST16(a,x) wr16((uint32_t)(a), (uint16_t)(x))
 #define ST32(a,x) wr32((uint32_t)(a), (uint32_t)(x))
 
-#include "../runtime/net/hitsync.c"
+#ifndef MHGU_HITSYNC_SOURCE
+#define MHGU_HITSYNC_SOURCE "../runtime/net/hitsync.c"
+#endif
+#include MHGU_HITSYNC_SOURCE
 
 _Static_assert(sizeof(Hello) == 5, "actual native Hello ABI");
 _Static_assert(sizeof(Report) == 136, "actual native Report ABI");
@@ -66,6 +77,10 @@ static bool enabled, net_up, crossplay;
 static Cpu cpu;
 static uint8_t sent[512][256];
 static uint32_t lengths[512];
+static bool sent_udp[512];
+static VPacket packets[512];
+// Synthetic virtual-network values only: no host bindings or real networking.
+static uint32_t own_ip, broadcast_ip;
 static unsigned nsent, orig_hit, orig_apply, orig_aggro, replay_aggro;
 static int sum_aggro, last_aggro_flag, last_aggro_slot;
 static int mutation; // 0 none, 1 full, 2 EN_REACT only, 3 aggro only, 4 multiple aggro
@@ -79,10 +94,25 @@ int config_live_lag_compensation(void) { return enabled; }
 bool ldn_net_up(void) { return net_up; }
 bool ldn_crossplay(void) { return crossplay; }
 uint64_t plat_now_ns(void) { return clock_ns; }
-void ldn_send_aux(const void *data, uint32_t len) {
+static void capture(const void *data, uint32_t len, const VPacket *p) {
     CHECK(nsent < 512 && len <= sizeof sent[0]);
     lengths[nsent] = len;
+    sent_udp[nsent] = p != NULL;
+    if (p) packets[nsent] = *p;
     memcpy(sent[nsent++], data, len);
+}
+uint32_t ldn_own_ip(void) { return own_ip; }
+uint32_t ldn_broadcast_ip(void) { return broadcast_ip; }
+void ldn_send_aux(const void *data, uint32_t len) {
+    CHECK(!MHGU_TEST_HITSYNC_CROSSPLAY || !crossplay);
+    capture(data, len, NULL);
+}
+void ldn_send(const VPacket *p, const void *data, uint32_t len) {
+    CHECK(MHGU_TEST_HITSYNC_CROSSPLAY && crossplay);
+    CHECK(p && p->src_ip == own_ip && p->dst_ip == broadcast_ip);
+    CHECK(p->src_port == 47318 && p->dst_port == 47318);
+    CHECK(p->proto == VPROTO_UDP && p->kind == 0 && p->pad == 0);
+    capture(data, len, p);
 }
 uint32_t hle_register(const char *name, HostFn fn) {
     CHECK(name && nregistered < 8);
@@ -179,6 +209,8 @@ static void reset_fixture(void) {
     memset(g_q, 0, sizeof g_q); memset(g_st, 0, sizeof g_st);
     g_nq = 0; g_seq = 0; t_aggro = t_aggro_sum = t_aggro_flag = 0; g_log = false;
     enabled = net_up = true; crossplay = false; nsent = 0;
+    own_ip = 0x0a170002u; broadcast_ip = 0x0a17ffffu;
+    memset(sent_udp, 0, sizeof sent_udp); memset(packets, 0, sizeof packets);
     orig_hit = orig_apply = orig_aggro = replay_aggro = 0;
     sum_aggro = last_aggro_flag = last_aggro_slot = 0; mutation = 1;
     memset(&cpu, 0, sizeof cpu); cpu.r[13] = STACK; cpu.v.f[0] = 12.5f;
@@ -218,15 +250,23 @@ static void test_tick_and_hello(void) {
     ++clock_ns; hitsync_tick(); CHECK(nsent == 2);
     enabled = false; hitsync_tick(); CHECK(nsent == 3 && sent[2][3] == 0);
     clock_ns += HELLO_NS * 2; hitsync_tick(); CHECK(nsent == 3);
+#if MHGU_TEST_HITSYNC_CROSSPLAY
+    enabled = true; crossplay = true; hitsync_tick();
+    CHECK(nsent == 4 && active() && sent_udp[3] && sent[3][3] == 1);
+    crossplay = false; hitsync_tick(); CHECK(nsent == 4 && active());
+    crossplay = true; hitsync_tick(); CHECK(nsent == 4 && active());
+    clock_ns += HELLO_NS; hitsync_tick(); CHECK(nsent == 5 && sent_udp[4] && sent[4][3] == 1);
+#else
     enabled = true; crossplay = true; hitsync_tick(); CHECK(nsent == 3 && !active());
     crossplay = false; hitsync_tick(); CHECK(nsent == 4);
     crossplay = true; hitsync_tick(); CHECK(nsent == 5 && sent[4][3] == 0);
+#endif
     crossplay = false; net_up = false; hitsync_tick(); CHECK(nsent == 5);
     net_up = true; hitsync_tick(); CHECK(nsent == 6);
     ST32(MEMBER + 0x30, 4); hitsync_tick(); CHECK(nsent == 6);
     ST32(G_MEMBER, 0); hitsync_tick(); CHECK(nsent == 6);
 
-    reset_fixture();
+    reset_fixture(); owner(); // Receive a remote slot 1, not our own slot's echo.
     uint8_t bytes[8] = {MAGIC, M_HELLO, 1, 1, HELLO_SHOTS, 99, 98, 97};
     for (unsigned len = 0; len < 4; ++len) {
         hitsync_aux_received(bytes, len); CHECK(g_hello[1] == 0);
@@ -240,16 +280,18 @@ static void test_tick_and_hello(void) {
     bytes[2] = 1; bytes[0] ^= 1; hitsync_aux_received(bytes, 5); CHECK(!g_hello[1]);
     bytes[0] = MAGIC; bytes[1] = 99; hitsync_aux_received(bytes, 8); CHECK(!g_hello[1]);
     hello(3, true, true, false); CHECK(reports_shots(3, clock_ns));
+    ST32(MEMBER + 0x30, 1);
     hello(0, true, false, false); CHECK(reports(0, clock_ns));
     begin("Hello wire lengths, capabilities, enable/disable, interval, crossplay and expiry");
 }
 
 static void test_negotiation(void) {
+    for (int transport = 0; transport <= MHGU_TEST_HITSYNC_CROSSPLAY; ++transport)
     for (int local = 0; local < 2; ++local)
     for (int remote = 0; remote < 2; ++remote)
     for (int old = 0; old < 2; ++old)
     for (int shot = 0; shot < 2; ++shot) {
-        reset_fixture(); owner(); enabled = local;
+        reset_fixture(); owner(); enabled = local; crossplay = transport;
         hello(1, remote, true, old);
         if (shot) { ST8(AT + AT_VIA, 1); ST32(AT + AT_OWNER, SHELL); }
         run_hit();
@@ -267,7 +309,9 @@ static void test_negotiation(void) {
         if (gate == 0) enabled = false;
         if (gate == 1) net_up = false;
         if (gate == 2) crossplay = true;
-        run_hit(); CHECK(nsent == 0 && orig_hit == 1 && LD16(IN + P_PARTS) == 1);
+        run_hit();
+        CHECK(nsent == (unsigned)(gate == 2 && MHGU_TEST_HITSYNC_CROSSPLAY));
+        CHECK(orig_hit == 1 && LD16(IN + P_PARTS) == 1);
     }
     // Reporter does NOT wait for the owner's Hello. Disabled/old owners keep native hits.
     reset_fixture(); run_hit(); CHECK(nsent == 1);
@@ -398,7 +442,7 @@ static void test_delta_edges(void) {
     reset_fixture(); snap_take(&s, EN, IN);
     ST16(IN + P_PARTS, MAX_ADD + 1); report_send(&s, EN, IN, 1, false);
     memcpy(&r, sent[0], sizeof r); CHECK(r.parts[0] == MAX_ADD + 1);
-    check_queue(r, false); // Sender does not enforce receiver's per-field cap.
+    owner(); check_queue(r, false); // Test the cap, not local-slot echo rejection.
     reset_fixture(); snap_take(&s, EN, IN); ST8(IN + I_HIT, 1);
     report_send(&s, EN, IN, 1, false); CHECK(nsent == 0); // Hit byte alone not encoded.
     ST8(IN + P_MOUNT, 2); report_send(&s, EN, IN, 1, false);
@@ -413,7 +457,7 @@ static void test_delta_edges(void) {
 }
 
 static void test_decoder(void) {
-    reset_fixture(); Report r = basic_report();
+    reset_fixture(); owner(); Report r = basic_report();
     for (unsigned len = 0; len < sizeof r; ++len) {
         hitsync_aux_received(&r, len); CHECK(g_nq == 0);
     }
@@ -508,14 +552,91 @@ static void test_lifecycle_and_trust(bool red) {
     if (red) CHECK(observed_damage == 0); // Deliberate RED: active() is false, but pending report applies.
     else CHECK(observed_damage == 7 && !active());
     reset_fixture(); owner(); hello(1, true, true, false); receive(basic_report());
-    crossplay = true; run_apply(); CHECK(observed_damage == 7 && !active());
+    crossplay = true; run_apply();
+    CHECK(observed_damage == 7 && active() == (bool)MHGU_TEST_HITSYNC_CROSSPLAY);
     reset_fixture(); owner(); net_up = false;
     hello(1, true, true, false); receive(basic_report()); run_apply();
     CHECK(observed_damage == 7); // Receive handler itself is not active-gated either.
     reset_fixture(); owner(); ST32(MEMBER + 0x30, 1);
-    hello(1, true, true, false); receive(basic_report()); run_apply(); CHECK(observed_damage == 7);
-    // Local slot reports also accepted; receipt does not enforce slot != local.
+    hello(1, true, true, false); receive(basic_report()); run_apply();
+    CHECK(observed_damage == (MHGU_TEST_HITSYNC_CROSSPLAY ? 0 : 7));
+    // 0.16.1 rejects local payload slots; remote payload slots remain unauthenticated.
     begin("characterize no reset, payload-slot trust and pending-report active-gate gap");
+}
+
+static void test_transport_and_echo(void) {
+    uint8_t link[2][2][256];
+    uint32_t link_len[2][2];
+    for (int transport = 0; transport <= MHGU_TEST_HITSYNC_CROSSPLAY; ++transport)
+    for (int shot = 0; shot < 2; ++shot) {
+        reset_fixture(); crossplay = transport;
+        // Ensure routing comes from the accessors, not hard-coded addresses.
+        if (transport) { own_ip ^= 0x400u; broadcast_ip ^= 0x10000u; }
+        if (shot) { ST8(AT + AT_VIA, 1); ST32(AT + AT_OWNER, SHELL); }
+        hitsync_tick(); run_hit();
+        CHECK(active() && nsent == 2 && lengths[0] == 5 && lengths[1] == sizeof(Report));
+        CHECK(sent[1][1] == (shot ? M_SHOT : M_REPORT));
+        for (unsigned i = 0; i < 2; ++i) {
+            CHECK(sent_udp[i] == (bool)transport);
+            if (!transport) {
+                link_len[shot][i] = lengths[i];
+                memcpy(link[shot][i], sent[i], lengths[i]);
+            } else {
+                CHECK(lengths[i] == link_len[shot][i]);
+                CHECK(memcmp(sent[i], link[shot][i], lengths[i]) == 0);
+                CHECK(packets[i].src_ip == own_ip && packets[i].dst_ip == broadcast_ip);
+            }
+            hitsync_aux_received(sent[i], lengths[i]); // Returned broadcast / own F_AUX.
+        }
+        CHECK(g_hello[1] == (MHGU_TEST_HITSYNC_CROSSPLAY ? 0 : clock_ns));
+        CHECK(g_caps[1] == (MHGU_TEST_HITSYNC_CROSSPLAY ? 0 : HELLO_SHOTS));
+        CHECK(g_nq == (MHGU_TEST_HITSYNC_CROSSPLAY ? 0 : 1));
+
+        // A remote owner consumes the same wire bytes, in either transport mode.
+        uint8_t advert[5]; Report r;
+        memcpy(advert, sent[0], sizeof advert); memcpy(&r, sent[1], sizeof r);
+        reset_fixture(); owner(); crossplay = transport;
+        hitsync_aux_received(advert, sizeof advert); receive(r); run_apply();
+        CHECK(observed_damage == 1 && replay_aggro == 1 && sum_aggro == 23 && g_nq == 0);
+
+        // No plugin/Hello, expired Hello, or old melee-only peer falls back to native copies.
+        for (int fallback = 0; fallback < 3; ++fallback) {
+            reset_fixture(); owner(); crossplay = transport;
+            if (shot) { ST8(AT + AT_VIA, 1); ST32(AT + AT_OWNER, SHELL); }
+            if (fallback == 1) { hello(1, true, true, false); clock_ns += HELLO_STALE; }
+            if (fallback == 2) hello(1, true, true, true);
+            run_hit();
+            CHECK(LD16(IN + P_PARTS) == (fallback == 2 && !shot ? 0 : 1));
+            CHECK(nsent == 0);
+        }
+        reset_fixture(); crossplay = transport; enabled = false; hitsync_tick(); run_hit();
+        CHECK(!active() && nsent == 0 && orig_hit == 1 && LD16(IN + P_PARTS) == 1);
+        enabled = true; hitsync_tick(); CHECK(nsent == 1 && sent[0][3] == 1);
+        enabled = false; hitsync_tick();
+        CHECK(nsent == 2 && sent[1][3] == 0 && sent_udp[1] == (bool)transport);
+        reset_fixture(); crossplay = transport; net_up = false; hitsync_tick(); run_hit();
+        CHECK(!active() && nsent == 0 && orig_hit == 1);
+    }
+    for (int transport = 0; transport <= MHGU_TEST_HITSYNC_CROSSPLAY; ++transport)
+    for (unsigned slot = 0; slot < 4; ++slot) {
+        reset_fixture(); crossplay = transport; ST32(MEMBER + 0x30, slot);
+        g_hello[slot] = clock_ns - 9; g_caps[slot] = 0x80;
+        hello(slot, true, true, false);
+        CHECK(g_hello[slot] == (MHGU_TEST_HITSYNC_CROSSPLAY ? clock_ns - 9 : clock_ns));
+        CHECK(g_caps[slot] == (MHGU_TEST_HITSYNC_CROSSPLAY ? 0x80 : HELLO_SHOTS));
+        hello(slot, false, false, true);
+        CHECK(g_hello[slot] == (MHGU_TEST_HITSYNC_CROSSPLAY ? clock_ns - 9 : 0));
+        CHECK(g_caps[slot] == (MHGU_TEST_HITSYNC_CROSSPLAY ? 0x80 : 0));
+        for (int shot = 0; shot < 2; ++shot) {
+            Report r = basic_report(); r.slot = (uint8_t)slot; r.kind = shot ? M_SHOT : M_REPORT;
+            check_queue(r, !MHGU_TEST_HITSYNC_CROSSPLAY);
+            r.slot = (uint8_t)((slot + 1) % 4); check_queue(r, true);
+        }
+    }
+    // Missing local identity is NOT an authentication boundary: valid remote payloads still queue.
+    reset_fixture(); ST32(G_MEMBER, 0); hello(1, true, true, false);
+    CHECK(g_hello[1] == clock_ns); check_queue(basic_report(), true);
+    begin("exact AUX/UDP routing, byte-identical Hello/report/shot, own echo and remote fallback");
 }
 
 static void test_init(void) {
@@ -544,6 +665,7 @@ int main(int argc, char **argv) {
     test_decoder();
     test_queues_and_order();
     test_lifecycle_and_trust(false);
+    test_transport_and_echo();
     test_init();
     printf("test-hitsync: PASS (%u groups, %u fail-closed CHECKs; production Report=%zu)\n",
            groups, checks, sizeof(Report));

@@ -86,6 +86,10 @@ if printf '%s\n' 0.16.0 "$source_version" | sort -V -C; then
   upstream_tests+=(test-hitsync test-chat test-itembar test-combowin test-villagehub-text)
   args+=("PANEL_TEST_FLAGS=-DMHGU_TEST_FORGE_MENU -DMHGU_TEST_MOUSE_CAPTURE -DMHGU_TEST_TEXT_HDR -DMHGU_TEST_DIRECT -DMHGU_TEST_LAGCOMP")
 fi
+if printf '%s\n' 0.16.1 "$source_version" | sort -V -C; then
+  upstream_tests+=(test-hitsync-vsock test-title-exit)
+  args+=("HITSYNC_TEST_FLAGS=-DMHGU_TEST_HITSYNC_CROSSPLAY=1")
+fi
 if [[ $mode == release ]]; then
   [[ -r /game/exefs/main && -r /game/exefs/sdk && -d /game/romfs ]] \
     || die "dump is unreadable in Docker; check ownership, ACLs and SELinux"
@@ -154,6 +158,11 @@ if [[ $mode == check ]]; then
       /work/obj-aarch64/itembar-test/test-itembar \
       /work/obj-aarch64/combowin-test/test-combowin \
       /work/obj-aarch64/villagehub-text-test/test-villagehub-text
+  fi
+  if printf '%s\n' 0.16.1 "$source_version" | sort -V -C; then
+    python3 /opt/mhgu/docker/check-elf.py aarch64 \
+      /work/obj-aarch64/hitsync-vsock-test/test-hitsync-vsock \
+      /work/obj-aarch64/title-exit-test/test-title-exit
   fi
   python3 tests/test_build_arch.py
   python3 tests/test_linux_release.py

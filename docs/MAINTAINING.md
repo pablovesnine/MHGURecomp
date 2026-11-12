@@ -81,6 +81,8 @@ The hitsync fixture records actual wire layout, opt-in/old-peer fallback, suppor
 
 The graphics contracts also retain explicit RED probes for backward-branch FMZ tracking and stacked-group scissor prediction. Both must compile for generic AArch64 and natively, then fail at their specific runtime assertion; a compiler failure or unrelated assertion cannot satisfy the check. I do not mark arbitrary test failures as expected successes. The original 0.15.4 front-face test remains unchanged and required. Source pins newer than 0.16.0 still run these contracts rather than silently skipping them.
 
+From source pin 0.16.1, I enable `MHGU_TEST_HITSYNC_CROSSPLAY` explicitly for the hitsync fixture rather than inspecting source-file existence. I retain the true network-down pending-report RED check; crossplay activation is now intended behavior. I require `test-title-exit` and `test-hitsync-vsock`, plus `tests/test_0161_contracts.py` for the generator decoration patch, Forge skip ordering and UI exit-request contracts. The title and routing executables use intercepted calls without live sockets, and run under native fail-closed sanitizers and AArch64/QEMU with ELF checks. These checks do not validate real emulator plugins, title screens, decoration behavior or concurrent networking.
+
 I retain the new netrate, dummy-slot/facing, KO-owner and quickhunt diagnostics as opt-in code, not normal startup behavior. `MHGU_NETRATE`, `MHGU_DUMMY`, `MHGU_KOTRACE`, `MHGU_FORCE_EVENT`, `MHGU_KILL_AFTER`, `MHGU_VQ_DEMO_TEST`, `MHGU_LDN_RTT` and `MHGU_LDN_BLOCK_DIRECT` are developer controls, not gameplay validation. Use only valid, bounded inputs. I do not enable them in the product or treat their counters as a measured speedup.
 
 The tests use the production room server rather than the weak room stand-in, whose proxy offsets are incorrect. Fixture initialization only makes readiness output line-buffered and matches Linux runtime SIGPIPE handling. No real emulator or game participates. Synthetic success does not validate passphrase enforcement, repeated bridge teardown/restart, departed-member cleanup or real game-packet rewriting. Keep those separate from transport coverage.
@@ -127,6 +129,14 @@ python3 tools/publish-linux-release.py --dist .linux-release/publish.EXAMPLE
 ```
 
 `--dry-run` performs preflight checks without creating a tag, release or asset. The publisher checks the archive allowlist, ARM64 programs, metadata and checksums before creating a new draft. It uploads only the package and `SHA256SUMS`, verifies their hashes, then publishes. A failed upload leaves a recoverable draft. Retry the same files, not a rebuild with different archive timestamps. Different existing tags or assets stop publication rather than being replaced. Existing 0.13.1 assets remain unchanged.
+
+From 0.16.1 onward, I use exactly this header, followed by one blank line and the complete upstream API release body, without translation, summaries, installation text or a provenance footer:
+
+```text
+> **Linux ARM64 only.** Original upstream release notes follow unchanged.
+```
+
+I fetch the release by its pinned ID, never latest, and verify its stable release identity and tag against the canonical source pin before any write. Unicode, Markdown and original line endings stay unchanged. I recheck identity and body before subsequent writes and final publication; changes abort and retain any draft for inspection. The existing package metadata and image checks still carry provenance. I preserve all seven earlier releases and accept only their complete canonical historical bodies for retries, never a receipt hidden in arbitrary text. Copying other-platform or updater sections does not enable those products in this fork.
 
 Changing the guest base or signed-char flags requires rebuilding both the runtime and the generated game library. The game-library identity includes the relevant headers and flags, so an old library cannot be relabeled safely. The public build uses revision-separated work directories.
 

@@ -15,7 +15,7 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 - Configurable frame-rate cap from 30 to 240 FPS, with actual performance depending on hardware and settings
 - SDL-compatible controllers and experimental, remappable keyboard/mouse controls
 - Optional small-monster synchronization in multiplayer. Upstream 0.14.0 restores the default to On and fixes related disconnections and high-FPS monster behavior. Existing explicit Off settings stay Off.
-- Experimental native-client lag compensation from 0.16.0, with important lifecycle and peer-trust limits (see [lag compensation](docs/SETTINGS_UI.md#lag-compensation)).
+- Experimental lag compensation from 0.16.0, extended to emulator crossplay in 0.16.1, with important lifecycle and peer-trust limits (see [lag compensation](docs/SETTINGS_UI.md#lag-compensation)).
 - Optional monster HP scaling by player count, including part HP from 0.15.4
 - Speed up village/hub event-camera pans by pressing A
 - Optional village quests in multiplayer (press L/R at the quest counter), with adjusted monster HP
@@ -28,9 +28,11 @@ These features come from upstream. I adapt the build and runtime for ARM64 Linux
 
 ## Download
 
-I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.15.4). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
+I publish my ARM64 builds in [Releases](https://github.com/pablovesnine/MHGURecomp/releases/tag/0.16.0). Download a package and follow [Install](#install), without cloning the repository. If you prefer to build it yourself, follow [Build](#build).
 
-The source transition targets upstream **0.16.0**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; newer behavior requires the corresponding source version. The downloadable package remains **0.15.4** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+The source transition targets upstream **0.16.1**. Run `bash tools/upstream-version.sh` to check the version pinned in your checkout; newer behavior requires the corresponding source version. The downloadable package remains **0.16.0** until I build and publish a new package with my own dump. The source update alone does not create a playable archive.
+
+From 0.16.1, I copy the complete original upstream release notes unchanged, preceded only by a Linux ARM64 header. Those notes can describe other platforms or the upstream updater; I do not ship those products or enable the updater. I leave the seven earlier releases unchanged.
 
 Upstream 0.15.0 changes FXAA shaders and the mod interpreter, adds an optional loading/shader indicator and controller access to Forge, adjusts controller rumble updates, and adds up to three extra supply maps to Village quests started from the Hub or Pub. I have not measured its performance or tested those changes on an ARM64 GPU or physical controller. Upstream speedup figures are not measured results for this fork.
 
@@ -42,13 +44,15 @@ Upstream 0.15.3 adds optional direct UDP between a native hub's host and each pl
 
 Upstream 0.15.4 shortens selected offline transition waits, extends monster HP factors to part HP, adds mouse control to bow aiming, and changes an ImGui draw-buffer cursor mapping and the renderer's front-face mask representation. I retain the network-session waits. I have not measured loading times or tested bow aiming, part breaks, plugin rendering or the graphics changes in a real hunt on ARM64. See [0.15.4 gameplay settings](docs/SETTINGS_UI.md#offline-transitions-hp-and-mouse-aiming).
 
-Upstream 0.16.0 adds experimental lag compensation for supported melee and bow/bowgun hits, longer chat messages, Prowler item-wheel handling, Better Inputs/Forge binding changes and Village quest-list/text handling. I retain lag compensation On by default, but the source has no report deduplication, authenticated sender-slot binding or session reset; queued reports can still apply after network loss or transition to crossplay. I have not validated real combat, emulator interoperability, plugins, input hardware or the new graphics paths. See [0.16.0 controls and Village changes](docs/SETTINGS_UI.md#0160-controls-chat-and-village-quests).
+Upstream 0.16.0 adds experimental lag compensation for supported melee and bow/bowgun hits, longer chat messages, Prowler item-wheel handling, Better Inputs/Forge binding changes and Village quest-list/text handling. I retain lag compensation On by default, but the source has no report deduplication, authenticated sender-slot binding or session reset; queued reports can still apply after network loss. I have not validated real combat, emulator interoperability, plugins, input hardware or the new graphics paths. See [0.16.0 controls and Village changes](docs/SETTINGS_UI.md#0160-controls-chat-and-village-quests).
+
+Upstream 0.16.1 sends lag-compensation messages over virtual UDP during crossplay and discards messages claiming the local slot. Emulator peers need the matching Lag Compensation plugin; the recomp uses its built-in implementation and skips that plugin. B on the title main menu now requests exit through the host settings policy. A generator patch clamps negative decoration free-slot counts and requires regenerating the game library from my own dump. I test synthetic contracts, not real emulator delivery, decoration menus or title-screen behavior on a device.
 
 Your device needs an ARM64 Linux userspace, glibc 2.39 or newer, a compatible C++ runtime and a desktop session. It also needs the Vulkan features required by the renderer, not just a matching version number. See [device requirements](docs/BUILD-LINUX-ARM64.md).
 
 ## Screenshots
 
-I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3, 0.15.0, 0.15.1, 0.15.2, 0.15.3, 0.15.4 or 0.16.0, or predict performance on other devices.
+I tested **0.13.1** on **AYN Odin 3** with [ArmadaOS 20261010](https://github.com/armada-os/armada). I got **~120 FPS in Eco mode**, with online multiplayer and morerokk's custom settings menu working. Those results do not validate 0.14.0, 0.14.3, 0.15.0, 0.15.1, 0.15.2, 0.15.3, 0.15.4, 0.16.0 or 0.16.1, or predict performance on other devices.
 
 ![MHGU gameplay on AYN Odin 3](docs/screenshots/ayn-odin3-gameplay.jpg) ![Online multiplayer lobby list](docs/screenshots/ayn-odin3-online.jpg) ![morerokk's custom settings menu](docs/screenshots/ayn-odin3-menu.jpg)
 

@@ -10,6 +10,7 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -85,6 +86,23 @@ class World:
         self.manifest_reads = 0
         self.manifest_changes_after = None
         self.tag_lookup_hides_draft = False
+        self.upstream_commit = "3" * 40
+        self.upstream = dict(
+            id=99, tag_name=VERSION, draft=False, prerelease=False,
+            published_at="2026-11-11T09:06:21Z",
+            body="# Upstream fixture\r\n\r\n- Exact Unicode: 日本語, é.\r\n"
+                 "<details><summary>Other platforms</summary>\r\n"
+                 "```text\r\nliteral fixture\r\n```\r\n</details>\r\n")
+        self.upstream_tag = {"object": {"type": "commit", "sha": self.upstream_commit}}
+        self.pin = {
+            "schema": "1", "algorithm": "release-base-v1",
+            "repository": "morerokk/MHGURecomp", "release_id": "99",
+            "version": VERSION, "tag": VERSION,
+            "tag_oid": self.upstream_commit, "commit": self.upstream_commit,
+            "published_at": self.upstream["published_at"], "fork_base": SHA,
+            "migration_merge": "4" * 40, "migration_source": "5" * 40}
+        self.upstream_reads = 0
+        self.upstream_changes_after = None
 
     def run(self, args, **kwargs):
         self.commands.append(args)
@@ -99,6 +117,8 @@ class World:
                 out = self.branch.encode()
             elif command == ["rev-parse", "HEAD"]:
                 out = self.head.encode()
+            elif command == ["show", SHA + ":.github/maintenance/upstream-release.tsv"]:
+                out = "".join(k + "\t" + v + "\n" for k, v in self.pin.items()).encode()
             else:
                 raise AssertionError(args)
         elif args[:2] == ["bash", str(ROOT / "tools/upstream-version.sh")]:
@@ -160,6 +180,17 @@ class World:
         prefix = "repos/" + REPO
         if method != "GET":
             self.writes.append((endpoint, method, payload))
+        if endpoint.startswith("repos/morerokk/MHGURecomp/"):
+            assert method == "GET"
+            if endpoint == "repos/morerokk/MHGURecomp/releases/99":
+                self.upstream_reads += 1
+                if (self.upstream_changes_after is not None and
+                        self.upstream_reads > self.upstream_changes_after):
+                    self.upstream["body"] += "\r\nchanged upstream"
+                return copy.deepcopy(self.upstream)
+            if endpoint == "repos/morerokk/MHGURecomp/git/ref/tags/" + VERSION:
+                return copy.deepcopy(self.upstream_tag)
+            raise AssertionError((endpoint, method))
         if endpoint == prefix:
             return {"full_name": self.repository, "default_branch": "master",
                     "permissions": {"push": True}}
@@ -712,6 +743,154 @@ class PublishTests(unittest.TestCase):
             self.write_archive()
             self.rejected()
             self.metadata["tools"] = original
+
+
+class UpstreamNotesTests(unittest.TestCase):
+    write_archive = PublishTests.write_archive
+    checksums = PublishTests.checksums
+    legacy_body = PublishTests.legacy_body
+    publish = PublishTests.publish
+    rejected = PublishTests.rejected
+    header = ("> **Linux ARM64 only.** Original upstream release notes "
+              "follow unchanged.\n\n")
+
+    def setUp(self):
+        version = patch.multiple(
+            sys.modules[__name__], VERSION="0.16.1",
+            NAME="LinuxARM64-MHGURecomp.0.16.1.tar.gz")
+        version.start()
+        self.addCleanup(version.stop)
+        PublishTests.setUp(self)
+
+    def test_notes_equal_header_and_complete_unmodified_upstream_body(self):
+        expected = self.header + self.world.upstream["body"]
+        self.publish()
+        self.assertEqual(self.world.release["body"], expected)
+        self.assertNotIn("Local publisher receipt", self.world.release["body"])
+        self.assertNotIn("Build provenance", self.world.release["body"])
+
+    def test_notes_are_not_fetched_from_latest_or_another_version(self):
+        self.publish(True)
+        upstream = [c for c in self.world.commands if any(
+            a.startswith("repos/morerokk/MHGURecomp/") for a in c)]
+        self.assertTrue(upstream)
+        self.assertFalse(any("/latest" in a for c in upstream for a in c))
+        self.assertTrue(any("/releases/99" in a for c in upstream for a in c))
+        self.assertEqual(self.world.writes, [])
+
+    def test_empty_missing_and_non_text_upstream_notes_fail_before_writes(self):
+        for body in (None, "", [], {"body": "not text"}):
+            with self.subTest(body=body):
+                self.world = World()
+                self.world.upstream["body"] = body
+                self.rejected()
+        self.world = World()
+        del self.world.upstream["body"]
+        self.rejected()
+
+    def test_release_identity_draft_prerelease_and_date_must_match_pin(self):
+        for key, value in (
+            ("id", 100), ("id", "99"), ("tag_name", "0.16.2"),
+            ("published_at", "2026-11-12T09:06:21Z"),
+            ("draft", True), ("draft", 0), ("prerelease", True),
+        ):
+            with self.subTest(key=key, value=value):
+                self.world = World()
+                self.world.upstream[key] = value
+                self.rejected()
+
+    def test_tag_object_type_and_oid_must_match_verified_pin(self):
+        for obj in (
+            {"type": "commit", "sha": "6" * 40},
+            {"type": "blob", "sha": "3" * 40},
+            {"type": "tag", "sha": "3" * 40}, {},
+        ):
+            with self.subTest(obj=obj):
+                self.world = World()
+                self.world.upstream_tag["object"] = obj
+                self.rejected()
+
+    def test_valid_annotated_tag_preserves_the_verified_tag_object_identity(self):
+        self.world.pin["tag_oid"] = "7" * 40
+        self.world.upstream_tag = {"object": {"type": "tag", "sha": "7" * 40}}
+        self.publish(True)
+        self.assertEqual(self.world.writes, [])
+
+    def test_missing_upstream_or_permission_failure_is_never_absence(self):
+        original = self.world.api
+        for status in (404, 403, 503):
+            def failing(endpoint, method, payload, raw, status=status):
+                if endpoint.startswith("repos/morerokk/MHGURecomp/"):
+                    raise subprocess.CalledProcessError(
+                        1, ["gh", "api"], stderr=f"HTTP {status}".encode())
+                return original(endpoint, method, payload, raw)
+            with self.subTest(status=status), patch.object(
+                    self.world, "api", side_effect=failing):
+                self.rejected()
+
+    def test_pin_must_bind_version_repository_and_release_identity(self):
+        for key, value in (
+            ("version", "0.16.2"), ("tag", "0.16.2"),
+            ("repository", "other/repo"), ("release_id", "bad"),
+            ("commit", "bad"), ("schema", "2"),
+        ):
+            with self.subTest(key=key):
+                self.world = World()
+                self.world.pin[key] = value
+                self.rejected()
+
+    def test_upstream_note_change_before_first_write_aborts(self):
+        self.world.upstream_changes_after = 1
+        self.rejected()
+
+    def test_upstream_note_change_after_draft_stops_before_upload(self):
+        self.world.upstream_changes_after = 4
+        with self.assertRaises(ValueError):
+            self.publish()
+        self.assertTrue(self.world.release["draft"])
+        self.assertEqual(self.world.release["assets"], [])
+        self.assertFalse(any(method == "PATCH" for _, method, _ in self.world.writes))
+
+    def test_new_style_retry_is_identical_and_read_only(self):
+        self.publish()
+        notes = self.world.release["body"]
+        writes = len(self.world.writes)
+        self.publish()
+        self.assertEqual(len(self.world.writes), writes)
+        self.assertEqual(self.world.release["body"], notes)
+
+    def test_altered_or_legacy_body_cannot_authorize_a_new_style_release(self):
+        self.publish()
+        expected = self.world.release["body"]
+        for body in (
+            expected + "\nextra", expected.replace("日本語", "changed"),
+            "arbitrary prefix\n" + expected, self.legacy_body(),
+        ):
+            with self.subTest(body=body[:30]):
+                self.world.release["body"] = body
+                self.world.writes.clear()
+                self.rejected()
+
+    def test_partial_upload_resumes_without_rewriting_original_notes(self):
+        self.world.fail_upload = "SHA256SUMS"
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.publish()
+        body = self.world.release["body"]
+        asset_id = self.world.release["assets"][0]["id"]
+        self.world.fail_upload = None
+        self.publish()
+        self.assertEqual(body, self.header + self.world.upstream["body"])
+        self.assertEqual(self.world.release["body"], body)
+        self.assertEqual(self.world.release["assets"][0]["id"], asset_id)
+        self.assertFalse(self.world.release["draft"])
+
+    def test_upstream_change_on_retry_never_rewrites_published_notes(self):
+        self.publish()
+        body = self.world.release["body"]
+        self.world.upstream["body"] += "\r\nAuthor edit"
+        self.world.writes.clear()
+        self.rejected()
+        self.assertEqual(self.world.release["body"], body)
         self.metadata["private"] = "not permitted"
         self.write_archive()
         self.rejected()

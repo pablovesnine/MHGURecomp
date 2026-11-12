@@ -10,6 +10,7 @@ Failures after creation deliberately retain the draft/tag for an identical retry
 Never updates/deletes tags or assets, and never touches release 0.13.1.
 """
 import argparse
+from datetime import datetime
 import hashlib
 import importlib.util
 import json
@@ -28,6 +29,9 @@ REGISTRY = "ghcr.io/pablovesnine/mhgurecomp-builder"
 SHA = r"[0-9a-f]{40}"
 DIGEST = r"sha256:[0-9a-f]{64}"
 TOP = "LinuxARM64-MHGURecomp"
+UPSTREAM = "repos/morerokk/MHGURecomp"
+UPSTREAM_HEADER = (
+    "> **Linux ARM64 only.** Original upstream release notes follow unchanged.\n\n")
 spec = importlib.util.spec_from_file_location(
     "release_dist", Path(__file__).with_name("dist.py"))
 dist = importlib.util.module_from_spec(spec)
@@ -163,6 +167,67 @@ class Publisher:
         ref = self.api(PREFIX + "/git/ref/heads/master")["object"]
         require(ref.get("type") == "commit" and ref.get("sha") == self.revision,
                 "authenticated GitHub master does not match the local source")
+
+    def upstream_pin(self):
+        """Read the canonical pin from the exact source already verified by git."""
+        raw = self.command(
+            "git", "show", self.revision +
+            ":.github/maintenance/upstream-release.tsv").decode("utf-8")
+        keys = ("schema", "algorithm", "repository", "release_id", "version",
+                "tag", "tag_oid", "commit", "published_at", "fork_base",
+                "migration_merge", "migration_source")
+        require(raw.endswith("\n") and "\r" not in raw and "\0" not in raw,
+                "upstream pin is not canonical LF data")
+        rows = [line.split("\t") for line in raw[:-1].split("\n")]
+        require(len(rows) == len(keys) and all(
+            len(row) == 2 and row[0] == key and row[1]
+            for row, key in zip(rows, keys)), "malformed upstream pin")
+        pin = dict(rows)
+        require(pin["schema"] == "1" and
+                pin["algorithm"] == "release-base-v1" and
+                pin["repository"] == "morerokk/MHGURecomp" and
+                pin["version"] == pin["tag"] == self.version and
+                re.fullmatch(r"[1-9][0-9]*", pin["release_id"]),
+                "upstream pin identity differs from verified version")
+        require(all(re.fullmatch(SHA, pin[key]) for key in
+                    ("tag_oid", "commit", "fork_base",
+                     "migration_merge", "migration_source")),
+                "invalid upstream pin OID")
+        require(re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z",
+            pin["published_at"]), "invalid upstream pin timestamp")
+        datetime.strptime(pin["published_at"], "%Y-%m-%dT%H:%M:%SZ")
+        return pin
+
+    def upstream_notes(self):
+        """Fail closed on missing or changed release identity, tag or raw body."""
+        pin = self.notes_pin
+        release = self.api(UPSTREAM + "/releases/" + pin["release_id"])
+        require(isinstance(release, dict), "invalid upstream release")
+        require(type(release.get("id")) is int and
+                release["id"] == int(pin["release_id"]) and
+                release.get("tag_name") == pin["tag"] and
+                release.get("published_at") == pin["published_at"] and
+                release.get("draft") is False and
+                release.get("prerelease") is False,
+                "upstream release differs from verified pin")
+        body = release.get("body")
+        require(isinstance(body, str) and bool(body.strip()),
+                "upstream release notes are missing or invalid")
+        tag = self.api(UPSTREAM + "/git/ref/tags/" + pin["tag"])
+        obj = tag.get("object") if isinstance(tag, dict) else None
+        kind = "commit" if pin["tag_oid"] == pin["commit"] else "tag"
+        require(isinstance(obj, dict) and obj.get("type") == kind and
+                obj.get("sha") == pin["tag_oid"],
+                "upstream tag differs from verified pin")
+        if hasattr(self, "original_notes"):
+            require(body == self.original_notes,
+                    "upstream release notes changed during publication")
+        return body
+
+    def check_upstream_notes(self):
+        if hasattr(self, "notes_pin"):
+            self.upstream_notes()
 
     def local_package(self):
         require(not self.output.is_symlink() and self.output.is_dir(),
@@ -374,6 +439,7 @@ class Publisher:
 
     def guard(self):
         self.current_master()
+        self.check_upstream_notes()
         for name, checksum in self.hashes.items():
             require(dist.sha256(dist.regular(self.output / name)) == checksum,
                     "local package changed during publication")
@@ -401,8 +467,14 @@ class Publisher:
         self.validation()
         self.provenance()
         # Accept only complete canonical notes, never a receipt in arbitrary text.
-        self.body, self.legacy_body = release_bodies(
-            self.version, self.revision, self.image, self.hashes)
+        if tuple(map(int, self.version.split("."))) >= (0, 16, 1):
+            self.notes_pin = self.upstream_pin()
+            self.original_notes = self.upstream_notes()
+            self.body = UPSTREAM_HEADER + self.original_notes
+            self.legacy_body = self.body
+        else:
+            self.body, self.legacy_body = release_bodies(
+                self.version, self.revision, self.image, self.hashes)
         tag, release = self.guard()
         present = self.remote_assets(release, complete=not release["draft"]) if release else set()
         if dry_run:
@@ -444,6 +516,7 @@ class Publisher:
         self.remote_assets(current, complete=True)
         # Final external write, only after downloading and hashing BOTH assets.
         self.current_master()
+        self.check_upstream_notes()
         self.api(PREFIX + "/releases/" + str(release["id"]), "PATCH",
                  {"draft": False, "make_latest": "true"})
         print(f"publish: https://github.com/{REPOSITORY}/releases/tag/{self.version}")

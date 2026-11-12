@@ -48,13 +48,13 @@ def linux_tab_labels(declaration):
 
 
 class ForkDocumentationTests(unittest.TestCase):
-    def test_0160_source_package_and_validation_boundaries(self):
+    def test_0161_source_package_and_validation_boundaries(self):
         readme = (ROOT / "README.md").read_text()
         guide = (ROOT / "docs/SETTINGS_UI.md").read_text()
         maintaining = (ROOT / "docs/MAINTAINING.md").read_text()
-        self.assertIn("targets upstream **0.16.0**", readme)
-        self.assertIn("package remains **0.15.4**", readme)
-        self.assertIn("/releases/tag/0.15.4", readme)
+        self.assertIn("targets upstream **0.16.1**", readme)
+        self.assertIn("package remains **0.16.0**", readme)
+        self.assertIn("/releases/tag/0.16.0", readme)
         self.assertIn("python3 tools/publish-linux-release.py --dist dist", readme)
         for text in ("MHGU_NO_FASTLOAD", "part HP", "next refill",
                      "bow", "not measured"):
@@ -86,7 +86,7 @@ class ForkDocumentationTests(unittest.TestCase):
         for text in ("test-ldn-direct", "test-villagehub-demo", "MHGU_TEST_DIRECT"):
             self.assertIn(text, maintaining)
         for text in ("Misc > Lag compensation (experimental)",
-                     "LagCompensation", "default On", "stale",
+                     "LagCompensation", "default On", "corrected in 0.16.1",
                      "deduplicate", "network loss", "120 codepoints",
                      "119 UTF-8", "malformed", "regenerating"):
             self.assertIn(text, guide)
@@ -94,6 +94,15 @@ class ForkDocumentationTests(unittest.TestCase):
                      "test-villagehub-text", "MHGU_TEST_LAGCOMP",
                      "test_0160_portable.py", "test_0160_contracts.py"):
             self.assertIn(text, maintaining)
+        for text in ("test_0161_contracts.py", "MHGU_TEST_HITSYNC_CROSSPLAY",
+                     "test-title-exit", "test-hitsync-vsock",
+                     "never latest", "seven earlier releases",
+                     "Original upstream release notes follow unchanged."):
+            self.assertIn(text, maintaining)
+        for text in ("Confirm exit is Off", "settings draft is clean",
+                     "47318", "local slot", "not sender authentication",
+                     "negative decoration", "matching Lag Compensation plugin"):
+            self.assertIn(text, guide)
 
     def test_tab_parser_preserves_all_linux_tabs_and_excludes_other_targets(self):
         declaration = (
